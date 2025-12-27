@@ -5,19 +5,16 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate && tsc",
+    "build": "tsc",
     "start": "node dist/server.js",
-    "vercel-build": "prisma generate && prisma migrate deploy",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@prisma/client": "^5.7.1",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.41.0",
     "cors": "^2.8.5",
@@ -39,7 +36,6 @@
     "@types/pg": "^8.16.0",
     "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.8",
-    "prisma": "^5.7.1",
     "tsx": "^4.21.0",
     "typescript": "^5.3.3"
   }
