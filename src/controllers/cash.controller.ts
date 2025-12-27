@@ -1,0 +1,130 @@
+import { Response } from 'express';
+import { AuthRequest } from '../middleware/auth.middleware';
+import {
+  createCashTransaction,
+  getCashTransactions,
+  initiateTransfer,
+  acceptCash,
+  depositCash,
+  getFloatingCash,
+} from '../services/cash.service';
+import { uploadToCloudinary } from '../utils/cloudinary';
+
+export const createTransaction = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { shiftId } = req.params;
+    const { litersSold, ratePerLiter, cardPayments, bankDeposit } = req.body;
+
+    if (!litersSold || !ratePerLiter || cardPayments === undefined) {
+      res.status(400).json({ error: 'Missing required fields' });
+      return;
+    }
+
+    if (!req.user?.stationId) {
+      res.status(403).json({ error: 'Station ID required' });
+      return;
+    }
+
+    const transaction = await createCashTransaction({
+      shiftId,
+      stationId: req.user.stationId,
+      litersSold: parseFloat(litersSold),
+      ratePerLiter: parseFloat(ratePerLiter),
+      cardPayments: parseFloat(cardPayments || 0),
+      bankDeposit: parseFloat(bankDeposit || 0),
+    });
+
+    res.status(201).json({ message: 'Transaction created successfully', transaction });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const getTransactions = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const transactions = await getCashTransactions(
+      req.user.id,
+      req.user.role,
+      req.user.stationId
+    );
+
+    res.json({ transactions });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const transferCash = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { toUserId } = req.body;
+
+    if (!toUserId) {
+      res.status(400).json({ error: 'Area Manager ID required' });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const transfer = await initiateTransfer(id, req.user.id, toUserId);
+
+    res.json({ message: 'Transfer initiated successfully', transfer });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const acceptCashTransfer = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    await acceptCash(id, req.user.id);
+
+    res.json({ message: 'Cash accepted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const depositCashTransfer = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const file = req.file;
+
+    if (!file) {
+      res.status(400).json({ error: 'Receipt image required' });
+      return;
+    }
+
+    const receiptUrl = await uploadToCloudinary(file);
+
+    await depositCash(id, receiptUrl);
+
+    res.json({ message: 'Cash deposited successfully', receiptUrl });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const getFloatingCashView = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const floatingCash = await getFloatingCash();
+    res.json(floatingCash);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
