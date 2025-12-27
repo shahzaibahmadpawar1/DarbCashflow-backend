@@ -1,5 +1,6 @@
-import prisma from '../config/database';
-import { CashTransferStatus } from '@prisma/client';
+import db from '../config/database';
+import { cashTransactions, cashTransfers } from '../db/schema';
+import { eq, and, inArray, desc } from 'drizzle-orm';
 
 export const createCashTransaction = async (data: {
   shiftId: string;
@@ -13,26 +14,30 @@ export const createCashTransaction = async (data: {
   const cashOnHand = totalRevenue - data.cardPayments;
   const cashToAM = cashOnHand - data.bankDeposit;
 
-  return prisma.cashTransaction.create({
-    data: {
-      shiftId: data.shiftId,
-      stationId: data.stationId,
-      litersSold: data.litersSold,
-      ratePerLiter: data.ratePerLiter,
-      totalRevenue,
-      cardPayments: data.cardPayments,
-      cashOnHand,
-      bankDeposit: data.bankDeposit,
-      cashToAM,
-      status: CashTransferStatus.PENDING_ACCEPTANCE,
-    },
-    include: {
+  const [transaction] = await db.insert(cashTransactions).values({
+    shiftId: data.shiftId,
+    stationId: data.stationId,
+    litersSold: data.litersSold,
+    ratePerLiter: data.ratePerLiter,
+    totalRevenue,
+    cardPayments: data.cardPayments,
+    cashOnHand,
+    bankDeposit: data.bankDeposit,
+    cashToAM,
+    status: 'PENDING_ACCEPTANCE',
+  }).returning();
+
+  // Fetch included relations manually or use query syntax if configured
+  // For consistency with Prisma response, we fetch relations
+  return db.query.cashTransactions.findFirst({
+    where: eq(cashTransactions.id, transaction.id),
+    with: {
       station: true,
       shift: true,
       cashTransfer: {
-        include: {
-          fromUser: { select: { id: true, name: true, email: true } },
-          toUser: { select: { id: true, name: true, email: true } },
+        with: {
+          fromUser: { columns: { id: true, name: true, email: true } },
+          toUser: { columns: { id: true, name: true, email: true } },
         },
       },
     },
@@ -40,59 +45,57 @@ export const createCashTransaction = async (data: {
 };
 
 export const getCashTransactions = async (userId: string, userRole: string, stationId?: string | null) => {
-  const where: any = {};
+  let whereClause = undefined;
 
   if (userRole === 'SM' && stationId) {
-    where.stationId = stationId;
+    whereClause = eq(cashTransactions.stationId, stationId);
   } else if (userRole === 'AM') {
     // AM can see transactions from stations in their area
-    // This would need areaId mapping - simplified for now
-    where.status = { in: [CashTransferStatus.PENDING_ACCEPTANCE, CashTransferStatus.WITH_AM] };
+    // This would need areaId mapping - simplified to status for now as per original code
+    whereClause = inArray(cashTransactions.status, ['PENDING_ACCEPTANCE', 'WITH_AM']);
   }
 
-  return prisma.cashTransaction.findMany({
-    where,
-    include: {
+  return db.query.cashTransactions.findMany({
+    where: whereClause,
+    with: {
       station: true,
       shift: true,
       cashTransfer: {
-        include: {
-          fromUser: { select: { id: true, name: true, email: true } },
-          toUser: { select: { id: true, name: true, email: true } },
+        with: {
+          fromUser: { columns: { id: true, name: true, email: true } },
+          toUser: { columns: { id: true, name: true, email: true } },
         },
       },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: desc(cashTransactions.createdAt),
   });
 };
 
 export const initiateTransfer = async (transactionId: string, fromUserId: string, toUserId: string) => {
-  const transaction = await prisma.cashTransaction.findUnique({
-    where: { id: transactionId },
+  const transaction = await db.query.cashTransactions.findFirst({
+    where: eq(cashTransactions.id, transactionId),
   });
 
   if (!transaction) {
     throw new Error('Transaction not found');
   }
 
-  if (transaction.status !== CashTransferStatus.PENDING_ACCEPTANCE) {
+  if (transaction.status !== 'PENDING_ACCEPTANCE') {
     throw new Error('Transaction already processed');
   }
 
-  return prisma.cashTransfer.create({
-    data: {
-      cashTransactionId: transactionId,
-      fromUserId,
-      toUserId,
-      status: CashTransferStatus.PENDING_ACCEPTANCE,
-    },
-  });
+  return db.insert(cashTransfers).values({
+    cashTransactionId: transactionId,
+    fromUserId,
+    toUserId,
+    status: 'PENDING_ACCEPTANCE',
+  }).returning();
 };
 
 export const acceptCash = async (transactionId: string, userId: string) => {
-  const transaction = await prisma.cashTransaction.findUnique({
-    where: { id: transactionId },
-    include: { cashTransfer: true },
+  const transaction = await db.query.cashTransactions.findFirst({
+    where: eq(cashTransactions.id, transactionId),
+    with: { cashTransfer: true },
   });
 
   if (!transaction) {
@@ -107,26 +110,25 @@ export const acceptCash = async (transactionId: string, userId: string) => {
     throw new Error('Unauthorized');
   }
 
-  if (transaction.cashTransfer.status !== CashTransferStatus.PENDING_ACCEPTANCE) {
+  if (transaction.cashTransfer.status !== 'PENDING_ACCEPTANCE') {
     throw new Error('Transfer already processed');
   }
 
-  return prisma.$transaction([
-    prisma.cashTransfer.update({
-      where: { id: transaction.cashTransfer.id },
-      data: { status: CashTransferStatus.WITH_AM },
-    }),
-    prisma.cashTransaction.update({
-      where: { id: transactionId },
-      data: { status: CashTransferStatus.WITH_AM },
-    }),
-  ]);
+  return db.transaction(async (tx) => {
+    await tx.update(cashTransfers)
+      .set({ status: 'WITH_AM' })
+      .where(eq(cashTransfers.id, transaction.cashTransfer!.id));
+
+    await tx.update(cashTransactions)
+      .set({ status: 'WITH_AM' })
+      .where(eq(cashTransactions.id, transactionId));
+  });
 };
 
 export const depositCash = async (transactionId: string, receiptUrl: string) => {
-  const transaction = await prisma.cashTransaction.findUnique({
-    where: { id: transactionId },
-    include: { cashTransfer: true },
+  const transaction = await db.query.cashTransactions.findFirst({
+    where: eq(cashTransactions.id, transactionId),
+    with: { cashTransfer: true },
   });
 
   if (!transaction) {
@@ -137,39 +139,34 @@ export const depositCash = async (transactionId: string, receiptUrl: string) => 
     throw new Error('Transfer not found');
   }
 
-  if (transaction.cashTransfer.status !== CashTransferStatus.WITH_AM) {
+  if (transaction.cashTransfer.status !== 'WITH_AM') {
     throw new Error('Cash must be accepted before deposit');
   }
 
-  return prisma.$transaction([
-    prisma.cashTransfer.update({
-      where: { id: transaction.cashTransfer.id },
-      data: {
-        status: CashTransferStatus.DEPOSITED,
+  return db.transaction(async (tx) => {
+    await tx.update(cashTransfers)
+      .set({
+        status: 'DEPOSITED',
         receiptUrl,
         depositedAt: new Date(),
-      },
-    }),
-    prisma.cashTransaction.update({
-      where: { id: transactionId },
-      data: { status: CashTransferStatus.DEPOSITED },
-    }),
-  ]);
+      })
+      .where(eq(cashTransfers.id, transaction.cashTransfer!.id));
+
+    await tx.update(cashTransactions)
+      .set({ status: 'DEPOSITED' })
+      .where(eq(cashTransactions.id, transactionId));
+  });
 };
 
 export const getFloatingCash = async () => {
-  const transactions = await prisma.cashTransaction.findMany({
-    where: {
-      status: {
-        in: [CashTransferStatus.PENDING_ACCEPTANCE, CashTransferStatus.WITH_AM],
-      },
-    },
-    include: {
+  const transactions = await db.query.cashTransactions.findMany({
+    where: inArray(cashTransactions.status, ['PENDING_ACCEPTANCE', 'WITH_AM']),
+    with: {
       station: true,
       cashTransfer: {
-        include: {
-          fromUser: { select: { name: true, email: true } },
-          toUser: { select: { name: true, email: true } },
+        with: {
+          fromUser: { columns: { name: true, email: true } },
+          toUser: { columns: { name: true, email: true } },
         },
       },
     },
@@ -182,12 +179,11 @@ export const getFloatingCash = async () => {
     transactions,
     breakdown: {
       pendingAcceptance: transactions
-        .filter((t) => t.status === CashTransferStatus.PENDING_ACCEPTANCE)
+        .filter((t) => t.status === 'PENDING_ACCEPTANCE')
         .reduce((sum, t) => sum + t.cashToAM, 0),
       withAM: transactions
-        .filter((t) => t.status === CashTransferStatus.WITH_AM)
+        .filter((t) => t.status === 'WITH_AM')
         .reduce((sum, t) => sum + t.cashToAM, 0),
     },
   };
 };
-

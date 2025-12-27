@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { createUser, loginUser, getUserById } from '../services/auth.service';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { UserRole } from '@prisma/client';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -12,7 +11,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (!Object.values(UserRole).includes(role)) {
+    if (!['SM', 'AM', 'Admin'].includes(role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
     }
@@ -28,7 +27,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json({ message: 'User created successfully', user });
   } catch (error: any) {
-    if (error.code === 'P2002') {
+    if (error.code === '23505') { // Postgres unique constraint violation code
       res.status(400).json({ error: 'Email already exists' });
       return;
     }

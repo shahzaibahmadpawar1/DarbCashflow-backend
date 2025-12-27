@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import prisma from '../config/database';
+import db from '../config/database';
+import { users } from '../db/schema';
+import { eq } from 'drizzle-orm';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -28,9 +30,9 @@ export const authenticate = async (
       userId: string;
     };
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, decoded.userId),
+      columns: {
         id: true,
         email: true,
         role: true,

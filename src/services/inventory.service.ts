@@ -1,51 +1,55 @@
-import prisma from '../config/database';
-import { ShiftStatus, ShiftType } from '@prisma/client';
+import db from '../config/database';
+import { nozzles, tanks, shifts, shiftReadings, tankerDeliveries } from '../db/schema';
+import { eq, and, desc, inArray, gte, lt, ne, sql } from 'drizzle-orm';
 
 export const getNozzlesByStation = async (stationId: string) => {
-  return prisma.nozzle.findMany({
-    where: { stationId },
-    include: {
+  return db.query.nozzles.findMany({
+    where: eq(nozzles.stationId, stationId),
+    with: {
       tank: true,
     },
-    orderBy: { name: 'asc' },
+    orderBy: sql`${nozzles.name} asc`,
   });
 };
 
 export const getTanksByStation = async (stationId: string) => {
-  return prisma.tank.findMany({
-    where: { stationId },
-    include: {
+  // Doing a manual join count or fetching all nozzles 
+  // Drizzle doesn't have a simple _count relation yet, so we'll fetch relation
+  const result = await db.query.tanks.findMany({
+    where: eq(tanks.stationId, stationId),
+    with: {
       nozzles: true,
-      _count: {
-        select: { nozzles: true },
-      },
     },
   });
+
+  return result.map(tank => ({
+    ...tank,
+    _count: { nozzles: tank.nozzles.length }
+  }));
 };
 
 export const getCurrentShift = async (stationId: string) => {
   const now = new Date();
   const hour = now.getHours();
-  const shiftType: ShiftType = hour >= 0 && hour < 12 ? ShiftType.DAY : ShiftType.NIGHT;
+  // shiftType is an enum 'DAY' | 'NIGHT'
+  const shiftType = hour >= 0 && hour < 12 ? 'DAY' : 'NIGHT';
 
   // Calculate shift start time (midnight for DAY, noon for NIGHT)
   const shiftStart = new Date(now);
-  shiftStart.setHours(shiftType === ShiftType.DAY ? 0 : 12, 0, 0, 0);
+  shiftStart.setHours(shiftType === 'DAY' ? 0 : 12, 0, 0, 0);
 
   // Find or create current shift
-  let shift = await prisma.shift.findFirst({
-    where: {
-      stationId,
-      shiftType,
-      startTime: {
-        gte: shiftStart,
-        lt: new Date(shiftStart.getTime() + 12 * 60 * 60 * 1000),
-      },
-      status: { in: [ShiftStatus.OPEN, ShiftStatus.CLOSED] },
-    },
-    include: {
+  let shift = await db.query.shifts.findFirst({
+    where: and(
+      eq(shifts.stationId, stationId),
+      eq(shifts.shiftType, shiftType),
+      gte(shifts.startTime, shiftStart),
+      lt(shifts.startTime, new Date(shiftStart.getTime() + 12 * 60 * 60 * 1000)),
+      inArray(shifts.status, ['OPEN', 'CLOSED'])
+    ),
+    with: {
       shiftReadings: {
-        include: {
+        with: {
           nozzle: true,
         },
       },
@@ -53,20 +57,21 @@ export const getCurrentShift = async (stationId: string) => {
   });
 
   if (!shift) {
-    shift = await prisma.shift.create({
-      data: {
-        stationId,
-        shiftType,
-        startTime: shiftStart,
-        status: ShiftStatus.OPEN,
-      },
-      include: {
+    const [newShift] = await db.insert(shifts).values({
+      stationId,
+      shiftType,
+      startTime: shiftStart,
+      status: 'OPEN',
+    }).returning();
+
+    // Re-fetch with relations
+    return db.query.shifts.findFirst({
+      where: eq(shifts.id, newShift.id),
+      with: {
         shiftReadings: {
-          include: {
-            nozzle: true,
-          },
-        },
-      },
+          with: { nozzle: true }
+        }
+      }
     });
   }
 
@@ -74,13 +79,13 @@ export const getCurrentShift = async (stationId: string) => {
 };
 
 export const getShiftReadings = async (shiftId: string) => {
-  return prisma.shiftReading.findMany({
-    where: { shiftId },
-    include: {
+  return db.query.shiftReadings.findMany({
+    where: eq(shiftReadings.shiftId, shiftId),
+    with: {
       nozzle: {
-        include: {
-          tank: true,
-        },
+        with: {
+          tank: true
+        }
       },
     },
   });
@@ -91,9 +96,9 @@ export const createShiftReadings = async (
   stationId: string,
   readings: Array<{ nozzleId: string; closingReading: number }>
 ) => {
-  const shift = await prisma.shift.findUnique({
-    where: { id: shiftId },
-    include: { shiftReadings: true },
+  const shift = await db.query.shifts.findFirst({
+    where: eq(shifts.id, shiftId),
+    with: { shiftReadings: true },
   });
 
   if (!shift) {
@@ -105,25 +110,26 @@ export const createShiftReadings = async (
   }
 
   // Get all nozzles for the station
-  const nozzles = await prisma.nozzle.findMany({
-    where: { stationId },
+  const allNozzles = await db.query.nozzles.findMany({
+    where: eq(nozzles.stationId, stationId),
   });
 
   // Get previous shift's closing readings as opening readings
-  const previousShift = await prisma.shift.findFirst({
-    where: {
-      stationId,
-      id: { not: shiftId },
-    },
-    orderBy: { startTime: 'desc' },
-    include: { shiftReadings: true },
+  const previousShift = await db.query.shifts.findFirst({
+    where: and(
+      eq(shifts.stationId, stationId),
+      ne(shifts.id, shiftId)
+    ),
+    orderBy: desc(shifts.startTime),
+    with: { shiftReadings: true },
   });
 
   const openingReadingsMap = new Map<string, number>();
   if (previousShift) {
     previousShift.shiftReadings.forEach((reading) => {
       if (reading.closingReading !== null) {
-        openingReadingsMap.set(reading.nozzleId, reading.closingReading);
+        // Drizzle might return fields as strings depending on driver but here we treat as number
+        openingReadingsMap.set(reading.nozzleId, Number(reading.closingReading));
       }
     });
   }
@@ -133,7 +139,7 @@ export const createShiftReadings = async (
   const tankConsumptionMap = new Map<string, number>();
 
   for (const reading of readings) {
-    const nozzle = nozzles.find((n) => n.id === reading.nozzleId);
+    const nozzle = allNozzles.find((n) => n.id === reading.nozzleId);
     if (!nozzle) {
       throw new Error(`Nozzle ${reading.nozzleId} not found`);
     }
@@ -150,63 +156,55 @@ export const createShiftReadings = async (
     tankConsumptionMap.set(nozzle.tankId, currentTankConsumption + consumption);
 
     // Create or update shift reading
-    const shiftReading = await prisma.shiftReading.upsert({
-      where: {
-        shiftId_nozzleId: {
-          shiftId,
-          nozzleId: reading.nozzleId,
-        },
-      },
-      update: {
-        closingReading: reading.closingReading,
-        consumption,
-      },
-      create: {
+    // Drizzle insert().onConflictDoUpdate()
+    await db.insert(shiftReadings)
+      .values({
         shiftId,
         nozzleId: reading.nozzleId,
         openingReading,
         closingReading: reading.closingReading,
-        consumption,
-      },
-    });
+        consumption
+      })
+      .onConflictDoUpdate({
+        target: [shiftReadings.shiftId, shiftReadings.nozzleId], // Requires a unique constraint on these columns in DB
+        set: {
+          closingReading: reading.closingReading,
+          consumption
+        }
+      });
 
-    results.push(shiftReading);
+    // We can't easily return the result of onConflictDoUpdate in one go like upsert, 
+    // so we skip pushing to results array or re-fetch if needed. 
+    // The original code returned results, so let's mock it or re-fetch.
   }
 
   // Update tank levels (subtract consumption)
   for (const [tankId, consumption] of tankConsumptionMap.entries()) {
-    await prisma.tank.update({
-      where: { id: tankId },
-      data: {
-        currentLevel: {
-          decrement: consumption,
-        },
-      },
-    });
+    await db.update(tanks)
+      .set({ currentLevel: sql`${tanks.currentLevel} - ${consumption}` })
+      .where(eq(tanks.id, tankId));
   }
 
-  return results;
+  return db.query.shiftReadings.findMany({ where: eq(shiftReadings.shiftId, shiftId) });
 };
 
 export const lockShift = async (shiftId: string) => {
-  return prisma.shift.update({
-    where: { id: shiftId },
-    data: {
+  return db.update(shifts)
+    .set({
       locked: true,
-      status: ShiftStatus.LOCKED,
-    },
-  });
+      status: 'LOCKED',
+    })
+    .where(eq(shifts.id, shiftId));
 };
 
 export const unlockShift = async (shiftId: string, userId: string) => {
-  return prisma.shift.update({
-    where: { id: shiftId },
-    data: {
+  return db.update(shifts)
+    .set({
       locked: false,
-      status: ShiftStatus.CLOSED,
+      status: 'CLOSED',
       lockedBy: userId,
-    },
-  });
+    })
+    .where(eq(shifts.id, shiftId));
 };
 
 export const updateShiftReading = async (
@@ -214,12 +212,12 @@ export const updateShiftReading = async (
   readingId: string,
   closingReading: number
 ) => {
-  const reading = await prisma.shiftReading.findUnique({
-    where: { id: readingId },
-    include: {
+  const reading = await db.query.shiftReadings.findFirst({
+    where: eq(shiftReadings.id, readingId),
+    with: {
       shift: true,
-      nozzle: true,
-    },
+      nozzle: true
+    }
   });
 
   if (!reading) {
@@ -244,23 +242,18 @@ export const updateShiftReading = async (
   const consumptionDiff = newConsumption - oldConsumption;
 
   // Update reading
-  const updatedReading = await prisma.shiftReading.update({
-    where: { id: readingId },
-    data: {
+  const [updatedReading] = await db.update(shiftReadings)
+    .set({
       closingReading,
       consumption: newConsumption,
-    },
-  });
+    })
+    .where(eq(shiftReadings.id, readingId))
+    .returning();
 
   // Adjust tank level
-  await prisma.tank.update({
-    where: { id: reading.nozzle.tankId },
-    data: {
-      currentLevel: {
-        decrement: consumptionDiff,
-      },
-    },
-  });
+  await db.update(tanks)
+    .set({ currentLevel: sql`${tanks.currentLevel} - ${consumptionDiff}` })
+    .where(eq(tanks.id, reading.nozzle.tankId));
 
   return updatedReading;
 };
@@ -270,34 +263,33 @@ export const recordTankerDelivery = async (
   liters: number,
   recordedBy: string
 ) => {
-  const tank = await prisma.tank.findUnique({
-    where: { id: tankId },
+  const tank = await db.query.tanks.findFirst({
+    where: eq(tanks.id, tankId),
   });
 
   if (!tank) {
     throw new Error('Tank not found');
   }
 
-  if (tank.currentLevel + liters > tank.capacity) {
+  // Note: tank.currentLevel might be null if default, handle that
+  const currentLevel = tank.currentLevel || 0;
+
+  if (currentLevel + liters > tank.capacity) {
     throw new Error('Delivery exceeds tank capacity');
   }
 
-  return prisma.$transaction([
-    prisma.tankerDelivery.create({
-      data: {
-        tankId,
-        liters,
-        recordedBy,
-      },
-    }),
-    prisma.tank.update({
-      where: { id: tankId },
-      data: {
-        currentLevel: {
-          increment: liters,
-        },
-      },
-    }),
-  ]);
-};
+  return db.transaction(async (tx) => {
+    const [delivery] = await tx.insert(tankerDeliveries).values({
+      tankId,
+      liters,
+      recordedBy,
+    }).returning();
 
+    const [updatedTank] = await tx.update(tanks)
+      .set({ currentLevel: sql`${tanks.currentLevel} + ${liters}` })
+      .where(eq(tanks.id, tankId))
+      .returning();
+
+    return [delivery, updatedTank];
+  });
+};

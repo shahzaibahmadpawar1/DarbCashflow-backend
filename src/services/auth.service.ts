@@ -1,7 +1,12 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import prisma from '../config/database';
-import { UserRole } from '@prisma/client';
+import db from '../config/database';
+import { users } from '../db/schema';
+import { eq } from 'drizzle-orm';
+
+// Fix the JWT type error by ensuring options are typed correctly
+const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 export const hashPassword = async (password: string): Promise<string> => {
   return bcrypt.hash(password, 10);
@@ -15,40 +20,43 @@ export const comparePassword = async (
 };
 
 export const generateToken = (userId: string): string => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET || 'secret', {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  });
+  return jwt.sign({ userId }, JWT_SECRET, {
+    expiresIn: JWT_EXPIRES_IN,
+  } as jwt.SignOptions);
 };
 
 export const createUser = async (data: {
   email: string;
   password: string;
   name: string;
-  role: UserRole;
+  role: 'SM' | 'AM' | 'Admin';
   stationId?: string | null;
   areaId?: string | null;
 }) => {
   const hashedPassword = await hashPassword(data.password);
-  return prisma.user.create({
-    data: {
-      ...data,
-      password: hashedPassword,
-    },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      stationId: true,
-      areaId: true,
-      createdAt: true,
-    },
+
+  const [newUser] = await db.insert(users).values({
+    ...data,
+    password: hashedPassword,
+    // Ensure stationId is undefined if null, or handle uuid requirement
+    stationId: data.stationId || null,
+    areaId: data.areaId || null,
+  }).returning({
+    id: users.id,
+    email: users.email,
+    name: users.name,
+    role: users.role,
+    stationId: users.stationId,
+    areaId: users.areaId,
+    createdAt: users.createdAt,
   });
+
+  return newUser;
 };
 
 export const loginUser = async (email: string, password: string) => {
-  const user = await prisma.user.findUnique({
-    where: { email },
+  const user = await db.query.users.findFirst({
+    where: eq(users.email, email),
   });
 
   if (!user) {
@@ -77,9 +85,9 @@ export const loginUser = async (email: string, password: string) => {
 };
 
 export const getUserById = async (userId: string) => {
-  return prisma.user.findUnique({
-    where: { id: userId },
-    select: {
+  return db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: {
       id: true,
       email: true,
       name: true,
@@ -90,4 +98,3 @@ export const getUserById = async (userId: string) => {
     },
   });
 };
-
