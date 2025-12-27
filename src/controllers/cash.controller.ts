@@ -20,14 +20,16 @@ export const createTransaction = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    if (!req.user?.stationId) {
+    const stationId = req.body.stationId || req.user?.stationId;
+
+    if (!stationId) {
       res.status(403).json({ error: 'Station ID required' });
       return;
     }
 
     const transaction = await createCashTransaction({
       shiftId,
-      stationId: req.user.stationId,
+      stationId: stationId,
       litersSold: parseFloat(litersSold),
       ratePerLiter: parseFloat(ratePerLiter),
       cardPayments: parseFloat(cardPayments || 0),
