@@ -19,51 +19,39 @@ export const authenticate = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      res.status(401).json({ error: 'Authentication required' });
-      return;
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as {
-      userId: string;
-    };
-
+    // BYPASS AUTH: Fetch the first user found to act as the logged-in user
+    // This ensures foreign key constraints (created_by, etc.) still work.
     const user = await db.query.users.findFirst({
-      where: eq(users.id, decoded.userId),
       columns: {
         id: true,
         email: true,
         role: true,
         stationId: true,
-      },
+      }
     });
 
-    if (!user) {
-      res.status(401).json({ error: 'User not found' });
-      return;
+    if (user) {
+      req.user = user;
+    } else {
+      // Fallback mock if db is empty (Note: writes requiring real user ID will fail)
+      req.user = {
+        id: '00000000-0000-0000-0000-000000000000',
+        email: 'admin@system.local',
+        role: 'Admin',
+        stationId: null
+      };
     }
 
-    req.user = user;
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
+    console.error("Auth bypass error:", error);
+    next();
   }
 };
 
 export const authorize = (...roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
-    if (!req.user) {
-      res.status(401).json({ error: 'Authentication required' });
-      return;
-    }
-
-    if (!roles.includes(req.user.role)) {
-      res.status(403).json({ error: 'Insufficient permissions' });
-      return;
-    }
-
+    // BYPASS AUTHORIZATION
     next();
   };
 };
