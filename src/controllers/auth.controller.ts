@@ -4,9 +4,9 @@ import { AuthRequest } from '../middleware/auth.middleware';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, name, role, stationId, areaId } = req.body;
+    const { employeeId, password, name, role, stationId, areaId } = req.body;
 
-    if (!email || !password || !name || !role) {
+    if (!employeeId || !password || !name || !role) {
       res.status(400).json({ error: 'Missing required fields' });
       return;
     }
@@ -17,7 +17,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     const user = await createUser({
-      email,
+      employeeId,
       password,
       name,
       role,
@@ -28,7 +28,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     res.status(201).json({ message: 'User created successfully', user });
   } catch (error: any) {
     if (error.code === '23505') { // Postgres unique constraint violation code
-      res.status(400).json({ error: 'Email already exists' });
+      res.status(400).json({ error: 'Employee ID already exists' });
       return;
     }
     res.status(500).json({ error: error.message || 'Internal server error' });
@@ -37,14 +37,14 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { employeeId, password } = req.body;
 
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password are required' });
+    if (!employeeId || !password) {
+      res.status(400).json({ error: 'Employee ID and password are required' });
       return;
     }
 
-    const result = await loginUser(email, password);
+    const result = await loginUser(employeeId, password);
     res.json(result);
   } catch (error: any) {
     res.status(401).json({ error: error.message || 'Invalid credentials' });

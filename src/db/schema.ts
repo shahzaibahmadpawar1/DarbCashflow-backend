@@ -21,7 +21,7 @@ export const stations = pgTable('stations', {
 
 export const users = pgTable('users', {
     id: uuid('id').defaultRandom().primaryKey(),
-    email: text('email').notNull().unique(),
+    employeeId: text('employee_id').notNull().unique(),
     password: text('password').notNull(),
     name: text('name').notNull(),
     role: userRoleEnum('role').notNull(),

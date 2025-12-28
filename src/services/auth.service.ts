@@ -26,7 +26,7 @@ export const generateToken = (userId: string): string => {
 };
 
 export const createUser = async (data: {
-  email: string;
+  employeeId: string;
   password: string;
   name: string;
   role: 'SM' | 'AM' | 'Admin';
@@ -43,7 +43,7 @@ export const createUser = async (data: {
     areaId: data.areaId || null,
   }).returning({
     id: users.id,
-    email: users.email,
+    employeeId: users.employeeId,
     name: users.name,
     role: users.role,
     stationId: users.stationId,
@@ -54,9 +54,9 @@ export const createUser = async (data: {
   return newUser;
 };
 
-export const loginUser = async (email: string, password: string) => {
+export const loginUser = async (employeeId: string, password: string) => {
   const user = await db.query.users.findFirst({
-    where: eq(users.email, email),
+    where: eq(users.employeeId, employeeId),
   });
 
   if (!user) {
@@ -75,7 +75,7 @@ export const loginUser = async (email: string, password: string) => {
     token,
     user: {
       id: user.id,
-      email: user.email,
+      employeeId: user.employeeId,
       name: user.name,
       role: user.role,
       stationId: user.stationId,
@@ -89,7 +89,7 @@ export const getUserById = async (userId: string) => {
     where: eq(users.id, userId),
     columns: {
       id: true,
-      email: true,
+      employeeId: true,
       name: true,
       role: true,
       stationId: true,

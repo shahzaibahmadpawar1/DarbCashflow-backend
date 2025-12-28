@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
+    employeeId: string;
     role: string;
     stationId?: string | null;
   };
@@ -24,7 +24,7 @@ export const authenticate = async (
     const user = await db.query.users.findFirst({
       columns: {
         id: true,
-        email: true,
+        employeeId: true,
         role: true,
         stationId: true,
       }
@@ -36,7 +36,7 @@ export const authenticate = async (
       // Fallback mock if db is empty (Note: writes requiring real user ID will fail)
       req.user = {
         id: '00000000-0000-0000-0000-000000000000',
-        email: 'admin@system.local',
+        employeeId: 'admin_sys',
         role: 'Admin',
         stationId: null
       };
@@ -48,7 +48,7 @@ export const authenticate = async (
     // Fallback mock user on error so we don't return 401
     req.user = {
       id: '00000000-0000-0000-0000-000000000000',
-      email: 'admin@system.local',
+      employeeId: 'admin_sys',
       role: 'Admin',
       stationId: null
     };

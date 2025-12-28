@@ -28,19 +28,19 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
 
 export const createUser = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { name, email, password, role, stationId, areaId } = req.body;
+        const { name, employeeId, password, role } = req.body;
 
-        if (!name || !email || !password || !role) {
+        if (!name || !employeeId || !password || !role) {
             res.status(400).json({ error: 'Missing required fields' });
             return;
         }
 
         const existingUser = await db.query.users.findFirst({
-            where: eq(users.email, email),
+            where: eq(users.employeeId, employeeId),
         });
 
         if (existingUser) {
-            res.status(400).json({ error: 'Email already exists' });
+            res.status(400).json({ error: 'Employee ID already exists' });
             return;
         }
 
@@ -48,11 +48,9 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<void>
 
         const [newUser] = await db.insert(users).values({
             name,
-            email,
+            employeeId,
             password: hashedPassword,
             role: role as 'Admin' | 'SM' | 'AM',
-            stationId: stationId || null,
-            areaId: areaId || null,
         }).returning();
 
         const { password: _, ...userWithoutPassword } = newUser;
