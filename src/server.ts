@@ -21,9 +21,16 @@ app.use(
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
+
+      // Allow localhost:3000 for local dev against prod backend
+      if (origin === 'http://localhost:3000') return callback(null, true);
+
       if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
         callback(null, true);
       } else {
+        // Temporarily log allowed origins for debugging
+        console.log('Blocked Origin:', origin);
+        console.log('Allowed Origins:', allowedOrigins);
         callback(new Error('Not allowed by CORS'));
       }
     },
