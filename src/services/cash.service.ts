@@ -36,8 +36,8 @@ export const createCashTransaction = async (data: {
       shift: true,
       cashTransfer: {
         with: {
-          fromUser: { columns: { id: true, name: true, email: true } },
-          toUser: { columns: { id: true, name: true, email: true } },
+          fromUser: { columns: { id: true, name: true, employeeId: true } },
+          toUser: { columns: { id: true, name: true, employeeId: true } },
         },
       },
     },
@@ -62,8 +62,8 @@ export const getCashTransactions = async (userId: string, userRole: string, stat
       shift: true,
       cashTransfer: {
         with: {
-          fromUser: { columns: { id: true, name: true, email: true } },
-          toUser: { columns: { id: true, name: true, email: true } },
+          fromUser: { columns: { id: true, name: true, employeeId: true } },
+          toUser: { columns: { id: true, name: true, employeeId: true } },
         },
       },
     },
@@ -165,8 +165,8 @@ export const getFloatingCash = async () => {
       station: true,
       cashTransfer: {
         with: {
-          fromUser: { columns: { name: true, email: true } },
-          toUser: { columns: { name: true, email: true } },
+          fromUser: { columns: { name: true, employeeId: true } },
+          toUser: { columns: { name: true, employeeId: true } },
         },
       },
     },
