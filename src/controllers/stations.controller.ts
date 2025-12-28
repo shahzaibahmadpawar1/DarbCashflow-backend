@@ -57,3 +57,49 @@ export const getStation = async (req: AuthRequest, res: Response): Promise<void>
   }
 };
 
+export const createStation = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { name, address } = req.body;
+
+    if (!name) {
+      res.status(400).json({ error: 'Station name is required' });
+      return;
+    }
+
+    const [station] = await db.insert(stations).values({
+      name,
+      address,
+    }).returning();
+
+    res.status(201).json({ message: 'Station created successfully', station });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const updateStation = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { name, address, areaManagerId } = req.body;
+
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (address !== undefined) updateData.address = address;
+    if (areaManagerId !== undefined) updateData.areaManagerId = areaManagerId;
+
+    const [updatedStation] = await db.update(stations)
+      .set(updateData)
+      .where(eq(stations.id, id))
+      .returning();
+
+    if (!updatedStation) {
+      res.status(404).json({ error: 'Station not found' });
+      return;
+    }
+
+    res.json({ message: 'Station updated successfully', station: updatedStation });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+

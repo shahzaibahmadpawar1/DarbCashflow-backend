@@ -13,6 +13,8 @@ export const stations = pgTable('stations', {
     id: uuid('id').defaultRandom().primaryKey(),
     name: text('name').notNull(),
     address: text('address'),
+    // removed .references() to avoid circular dependency in TS. FK is enforced by SQL.
+    areaManagerId: uuid('area_manager_id'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -112,8 +114,13 @@ export const tankerDeliveries = pgTable('tanker_deliveries', {
 
 // --- Relations ---
 
-export const stationsRelations = relations(stations, ({ many }) => ({
-    users: many(users),
+export const stationsRelations = relations(stations, ({ one, many }) => ({
+    users: many(users, { relationName: 'stationUsers' }), // Users working at this station
+    areaManager: one(users, {
+        fields: [stations.areaManagerId],
+        references: [users.id],
+        relationName: 'areaManager'
+    }),
     tanks: many(tanks),
     nozzles: many(nozzles),
     shifts: many(shifts),
@@ -121,7 +128,12 @@ export const stationsRelations = relations(stations, ({ many }) => ({
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
-    station: one(stations, { fields: [users.stationId], references: [stations.id] }),
+    station: one(stations, {
+        fields: [users.stationId],
+        references: [stations.id],
+        relationName: 'stationUsers'
+    }),
+    managedStations: many(stations, { relationName: 'areaManager' }),
     // Add other relations if necessary, e.g. shifts locked by user, cash transfers, etc.
 }));
 
