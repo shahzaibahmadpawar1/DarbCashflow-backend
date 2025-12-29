@@ -19,9 +19,20 @@ export const authenticate = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    // BYPASS AUTH: Fetch the first user found to act as the logged-in user
-    // This ensures foreign key constraints (created_by, etc.) still work.
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'No token provided' });
+      return;
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
+    const decoded = jwt.verify(token, jwtSecret) as { userId: string };
+
     const user = await db.query.users.findFirst({
+      where: eq(users.id, decoded.userId),
       columns: {
         id: true,
         employeeId: true,
@@ -30,36 +41,31 @@ export const authenticate = async (
       }
     });
 
-    if (user) {
-      req.user = user;
-    } else {
-      // Fallback mock if db is empty (Note: writes requiring real user ID will fail)
-      req.user = {
-        id: '00000000-0000-0000-0000-000000000000',
-        employeeId: 'admin_sys',
-        role: 'Admin',
-        stationId: null
-      };
+    if (!user) {
+      res.status(401).json({ error: 'User not found' });
+      return;
     }
 
+    req.user = user;
     next();
   } catch (error) {
-    console.error("Auth bypass error - DB might be unreachable:", error);
-    // Fallback mock user on error so we don't return 401
-    req.user = {
-      id: '00000000-0000-0000-0000-000000000000',
-      employeeId: 'admin_sys',
-      role: 'Admin',
-      stationId: null
-    };
-    next();
+    console.error('Authentication error:', error);
+    res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
 
 export const authorize = (...roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
-    // BYPASS AUTHORIZATION
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    if (roles.length > 0 && !roles.includes(req.user.role)) {
+      res.status(403).json({ error: 'Forbidden - Insufficient permissions' });
+      return;
+    }
+
     next();
   };
 };
-
