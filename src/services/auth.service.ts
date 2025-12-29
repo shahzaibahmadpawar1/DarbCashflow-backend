@@ -53,9 +53,9 @@ export const createUser = async (data: {
   return newUser;
 };
 
-export const loginUser = async (employeeId: string, password: string) => {
+export const loginUser = async (name: string, password: string) => {
   const user = await db.query.users.findFirst({
-    where: eq(users.employeeId, employeeId),
+    where: eq(users.name, name),
   });
 
   if (!user) {

@@ -37,14 +37,14 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { employeeId, password } = req.body;
+    const { name, password } = req.body;
 
-    if (!employeeId || !password) {
-      res.status(400).json({ error: 'Employee ID and password are required' });
+    if (!name || !password) {
+      res.status(400).json({ error: 'Name and password are required' });
       return;
     }
 
-    const result = await loginUser(employeeId, password);
+    const result = await loginUser(name, password);
     res.json(result);
   } catch (error: any) {
     res.status(401).json({ error: error.message || 'Invalid credentials' });
