@@ -10,6 +10,7 @@ import {
   unlockShift,
   updateShiftReading,
   recordTankerDelivery,
+  getTankerDeliveries,
 } from '../services/inventory.service';
 
 export const getNozzles = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -118,10 +119,10 @@ export const updateReading = async (req: AuthRequest, res: Response): Promise<vo
 export const createTankerDelivery = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { tankId } = req.params;
-    const { liters } = req.body;
+    const { litersDelivered, deliveryDate, notes } = req.body;
 
-    if (!liters) {
-      res.status(400).json({ error: 'Liters is required' });
+    if (!litersDelivered) {
+      res.status(400).json({ error: 'Liters delivered is required' });
       return;
     }
 
@@ -130,13 +131,29 @@ export const createTankerDelivery = async (req: AuthRequest, res: Response): Pro
       return;
     }
 
-    const [delivery, tank] = await recordTankerDelivery(
+    const result = await recordTankerDelivery({
       tankId,
-      parseFloat(liters),
-      req.user.id
-    );
+      litersDelivered: parseFloat(litersDelivered),
+      deliveryDate: deliveryDate ? new Date(deliveryDate) : new Date(),
+      deliveredBy: req.user.id,
+      notes,
+    });
 
-    res.status(201).json({ message: 'Delivery recorded successfully', delivery, tank });
+    res.status(201).json({
+      message: 'Delivery recorded successfully',
+      delivery: result.delivery,
+      tank: result.tank
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const getDeliveries = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { tankId } = req.query;
+    const deliveries = await getTankerDeliveries(tankId as string | undefined);
+    res.json({ deliveries });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });
   }

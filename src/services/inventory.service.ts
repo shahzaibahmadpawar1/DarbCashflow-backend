@@ -1,5 +1,5 @@
 import db from '../config/database';
-import { nozzles, tanks, shifts, shiftReadings, tankerDeliveries } from '../db/schema';
+import { nozzles, tanks, shifts, nozzleReadings, tankerDeliveries } from '../db/schema';
 import { eq, and, desc, inArray, gte, lt, ne, sql } from 'drizzle-orm';
 
 export const getNozzlesByStation = async (stationId: string) => {
@@ -48,7 +48,7 @@ export const getCurrentShift = async (stationId: string) => {
       inArray(shifts.status, ['OPEN', 'CLOSED'])
     ),
     with: {
-      shiftReadings: {
+      nozzleReadings: {
         with: {
           nozzle: true,
         },
@@ -68,7 +68,7 @@ export const getCurrentShift = async (stationId: string) => {
     return db.query.shifts.findFirst({
       where: eq(shifts.id, newShift.id),
       with: {
-        shiftReadings: {
+        nozzleReadings: {
           with: { nozzle: true }
         }
       }
@@ -79,8 +79,8 @@ export const getCurrentShift = async (stationId: string) => {
 };
 
 export const getShiftReadings = async (shiftId: string) => {
-  return db.query.shiftReadings.findMany({
-    where: eq(shiftReadings.shiftId, shiftId),
+  return db.query.nozzleReadings.findMany({
+    where: eq(nozzleReadings.shiftId, shiftId),
     with: {
       nozzle: {
         with: {
@@ -98,7 +98,7 @@ export const createShiftReadings = async (
 ) => {
   const shift = await db.query.shifts.findFirst({
     where: eq(shifts.id, shiftId),
-    with: { shiftReadings: true },
+    with: { nozzleReadings: true },
   });
 
   if (!shift) {
@@ -121,12 +121,12 @@ export const createShiftReadings = async (
       ne(shifts.id, shiftId)
     ),
     orderBy: desc(shifts.startTime),
-    with: { shiftReadings: true },
+    with: { nozzleReadings: true },
   });
 
   const openingReadingsMap = new Map<string, number>();
   if (previousShift) {
-    previousShift.shiftReadings.forEach((reading) => {
+    previousShift.nozzleReadings.forEach((reading) => {
       if (reading.closingReading !== null) {
         // Drizzle might return fields as strings depending on driver but here we treat as number
         openingReadingsMap.set(reading.nozzleId, Number(reading.closingReading));
@@ -157,7 +157,7 @@ export const createShiftReadings = async (
 
     // Create or update shift reading
     // Drizzle insert().onConflictDoUpdate()
-    await db.insert(shiftReadings)
+    await db.insert(nozzleReadings)
       .values({
         shiftId,
         nozzleId: reading.nozzleId,
@@ -166,7 +166,7 @@ export const createShiftReadings = async (
         consumption
       })
       .onConflictDoUpdate({
-        target: [shiftReadings.shiftId, shiftReadings.nozzleId], // Requires a unique constraint on these columns in DB
+        target: [nozzleReadings.shiftId, nozzleReadings.nozzleId], // Requires a unique constraint on these columns in DB
         set: {
           closingReading: reading.closingReading,
           consumption
@@ -185,7 +185,7 @@ export const createShiftReadings = async (
       .where(eq(tanks.id, tankId));
   }
 
-  return db.query.shiftReadings.findMany({ where: eq(shiftReadings.shiftId, shiftId) });
+  return db.query.nozzleReadings.findMany({ where: eq(nozzleReadings.shiftId, shiftId) });
 };
 
 export const lockShift = async (shiftId: string) => {
@@ -212,8 +212,8 @@ export const updateShiftReading = async (
   readingId: string,
   closingReading: number
 ) => {
-  const reading = await db.query.shiftReadings.findFirst({
-    where: eq(shiftReadings.id, readingId),
+  const reading = await db.query.nozzleReadings.findFirst({
+    where: eq(nozzleReadings.id, readingId),
     with: {
       shift: true,
       nozzle: true
@@ -242,12 +242,12 @@ export const updateShiftReading = async (
   const consumptionDiff = newConsumption - oldConsumption;
 
   // Update reading
-  const [updatedReading] = await db.update(shiftReadings)
+  const [updatedReading] = await db.update(nozzleReadings)
     .set({
       closingReading,
       consumption: newConsumption,
     })
-    .where(eq(shiftReadings.id, readingId))
+    .where(eq(nozzleReadings.id, readingId))
     .returning();
 
   // Adjust tank level
@@ -258,38 +258,76 @@ export const updateShiftReading = async (
   return updatedReading;
 };
 
-export const recordTankerDelivery = async (
-  tankId: string,
-  liters: number,
-  recordedBy: string
-) => {
+export const recordTankerDelivery = async (data: {
+  tankId: string;
+  litersDelivered: number;
+  deliveryDate: Date;
+  deliveredBy: string;
+  notes?: string;
+}) => {
   const tank = await db.query.tanks.findFirst({
-    where: eq(tanks.id, tankId),
+    where: eq(tanks.id, data.tankId),
   });
 
   if (!tank) {
     throw new Error('Tank not found');
   }
 
-  // Note: tank.currentLevel might be null if default, handle that
   const currentLevel = tank.currentLevel || 0;
+  const newLevel = currentLevel + data.litersDelivered;
 
-  if (currentLevel + liters > tank.capacity) {
-    throw new Error('Delivery exceeds tank capacity');
+  // Check capacity if set
+  if (tank.capacity && newLevel > tank.capacity) {
+    throw new Error(
+      `Delivery exceeds tank capacity. ` +
+      `Capacity: ${tank.capacity}L, Current: ${currentLevel}L, ` +
+      `Delivery: ${data.litersDelivered}L, New Total: ${newLevel}L`
+    );
   }
 
   return db.transaction(async (tx) => {
     const [delivery] = await tx.insert(tankerDeliveries).values({
-      tankId,
-      liters,
-      recordedBy,
+      tankId: data.tankId,
+      litersDelivered: data.litersDelivered,
+      deliveryDate: data.deliveryDate,
+      deliveredBy: data.deliveredBy,
+      notes: data.notes,
     }).returning();
 
     const [updatedTank] = await tx.update(tanks)
-      .set({ currentLevel: sql`${tanks.currentLevel} + ${liters}` })
-      .where(eq(tanks.id, tankId))
+      .set({ currentLevel: newLevel, updatedAt: new Date() })
+      .where(eq(tanks.id, data.tankId))
       .returning();
 
-    return [delivery, updatedTank];
+    return { delivery, tank: updatedTank };
+  });
+};
+
+export const getTankerDeliveries = async (tankId?: string) => {
+  if (tankId) {
+    return db.query.tankerDeliveries.findMany({
+      where: eq(tankerDeliveries.tankId, tankId),
+      with: {
+        tank: true,
+        deliveredBy: {
+          columns: { id: true, name: true, employeeId: true },
+        },
+      },
+      orderBy: [desc(tankerDeliveries.deliveryDate)],
+    });
+  }
+
+  return db.query.tankerDeliveries.findMany({
+    with: {
+      tank: {
+        with: {
+          station: true,
+        },
+      },
+      deliveredBy: {
+        columns: { id: true, name: true, employeeId: true },
+      },
+    },
+    orderBy: [desc(tankerDeliveries.deliveryDate)],
   });
 };
