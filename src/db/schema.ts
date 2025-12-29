@@ -6,6 +6,7 @@ export const userRoleEnum = pgEnum('UserRole', ['SM', 'AM', 'Admin']);
 export const shiftTypeEnum = pgEnum('ShiftType', ['DAY', 'NIGHT']);
 export const shiftStatusEnum = pgEnum('ShiftStatus', ['OPEN', 'CLOSED', 'LOCKED']);
 export const cashTransferStatusEnum = pgEnum('CashTransferStatus', ['PENDING_ACCEPTANCE', 'WITH_AM', 'DEPOSITED']);
+export const fuelTypeEnum = pgEnum('FuelType', ['91_GASOLINE', '95_GASOLINE', 'DIESEL']);
 
 // --- Tables ---
 
@@ -32,8 +33,8 @@ export const users = pgTable('users', {
 export const tanks = pgTable('tanks', {
     id: uuid('id').defaultRandom().primaryKey(),
     stationId: uuid('station_id').notNull().references(() => stations.id, { onDelete: 'cascade' }),
-    fuelType: text('fuel_type').notNull(),
-    capacity: doublePrecision('capacity').notNull(),
+    fuelType: fuelTypeEnum('fuel_type').notNull(),
+    capacity: doublePrecision('capacity'), // Nullable - will be set later
     currentLevel: doublePrecision('current_level').default(0),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
@@ -44,6 +45,8 @@ export const nozzles = pgTable('nozzles', {
     name: text('name').notNull().unique(),
     stationId: uuid('station_id').notNull().references(() => stations.id, { onDelete: 'cascade' }),
     tankId: uuid('tank_id').notNull().references(() => tanks.id, { onDelete: 'cascade' }),
+    fuelType: fuelTypeEnum('fuel_type').notNull(),
+    meterLimit: doublePrecision('meter_limit').default(999999),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -57,17 +60,20 @@ export const shifts = pgTable('shifts', {
     status: shiftStatusEnum('status').default('OPEN'),
     locked: boolean('locked').default(false),
     lockedBy: text('locked_by'),
+    lockedAt: timestamp('locked_at'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-export const shiftReadings = pgTable('shift_readings', {
+export const nozzleReadings = pgTable('nozzle_readings', {
     id: uuid('id').defaultRandom().primaryKey(),
     shiftId: uuid('shift_id').notNull().references(() => shifts.id, { onDelete: 'cascade' }),
     nozzleId: uuid('nozzle_id').notNull().references(() => nozzles.id, { onDelete: 'cascade' }),
     openingReading: doublePrecision('opening_reading').notNull(),
     closingReading: doublePrecision('closing_reading'),
     consumption: doublePrecision('consumption'),
+    isRollover: boolean('is_rollover').default(false),
+    pricePerLiter: doublePrecision('price_per_liter'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -103,9 +109,10 @@ export const cashTransfers = pgTable('cash_transfers', {
 export const tankerDeliveries = pgTable('tanker_deliveries', {
     id: uuid('id').defaultRandom().primaryKey(),
     tankId: uuid('tank_id').notNull().references(() => tanks.id, { onDelete: 'cascade' }),
-    liters: doublePrecision('liters').notNull(),
-    deliveryDate: timestamp('delivery_date').defaultNow(),
-    recordedBy: uuid('recorded_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    litersDelivered: doublePrecision('liters_delivered').notNull(),
+    deliveryDate: timestamp('delivery_date').notNull(),
+    deliveredBy: uuid('delivered_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    notes: text('notes'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -145,18 +152,18 @@ export const tanksRelations = relations(tanks, ({ one, many }) => ({
 export const nozzlesRelations = relations(nozzles, ({ one, many }) => ({
     station: one(stations, { fields: [nozzles.stationId], references: [stations.id] }),
     tank: one(tanks, { fields: [nozzles.tankId], references: [tanks.id] }),
-    shiftReadings: many(shiftReadings),
+    nozzleReadings: many(nozzleReadings),
 }));
 
 export const shiftsRelations = relations(shifts, ({ one, many }) => ({
     station: one(stations, { fields: [shifts.stationId], references: [stations.id] }),
-    shiftReadings: many(shiftReadings),
+    nozzleReadings: many(nozzleReadings),
     cashTransactions: many(cashTransactions),
 }));
 
-export const shiftReadingsRelations = relations(shiftReadings, ({ one }) => ({
-    shift: one(shifts, { fields: [shiftReadings.shiftId], references: [shifts.id] }),
-    nozzle: one(nozzles, { fields: [shiftReadings.nozzleId], references: [nozzles.id] }),
+export const nozzleReadingsRelations = relations(nozzleReadings, ({ one }) => ({
+    shift: one(shifts, { fields: [nozzleReadings.shiftId], references: [shifts.id] }),
+    nozzle: one(nozzles, { fields: [nozzleReadings.nozzleId], references: [nozzles.id] }),
 }));
 
 export const cashTransactionsRelations = relations(cashTransactions, ({ one }) => ({
@@ -173,7 +180,7 @@ export const cashTransfersRelations = relations(cashTransfers, ({ one }) => ({
 
 export const tankerDeliveriesRelations = relations(tankerDeliveries, ({ one }) => ({
     tank: one(tanks, { fields: [tankerDeliveries.tankId], references: [tanks.id] }),
-    recordedBy: one(users, { fields: [tankerDeliveries.recordedBy], references: [users.id] }),
+    deliveredBy: one(users, { fields: [tankerDeliveries.deliveredBy], references: [users.id] }),
 }));
 
 // Export type helpers if needed
