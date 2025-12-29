@@ -31,23 +31,22 @@ export const createUser = async (data: {
   name: string;
   role: 'SM' | 'AM' | 'Admin';
   stationId?: string | null;
-  areaId?: string | null;
+  areaManagerId?: string | null;
 }) => {
   const hashedPassword = await hashPassword(data.password);
 
   const [newUser] = await db.insert(users).values({
     ...data,
     password: hashedPassword,
-    // Ensure stationId is undefined if null, or handle uuid requirement
     stationId: data.stationId || null,
-    areaId: data.areaId || null,
+    areaManagerId: data.areaManagerId || null,
   }).returning({
     id: users.id,
     employeeId: users.employeeId,
     name: users.name,
     role: users.role,
     stationId: users.stationId,
-    areaId: users.areaId,
+    areaManagerId: users.areaManagerId,
     createdAt: users.createdAt,
   });
 
@@ -79,7 +78,7 @@ export const loginUser = async (employeeId: string, password: string) => {
       name: user.name,
       role: user.role,
       stationId: user.stationId,
-      areaId: user.areaId,
+      areaManagerId: user.areaManagerId,
     },
   };
 };
@@ -93,7 +92,7 @@ export const getUserById = async (userId: string) => {
       name: true,
       role: true,
       stationId: true,
-      areaId: true,
+      areaManagerId: true,
       createdAt: true,
     },
   });

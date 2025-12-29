@@ -80,12 +80,11 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
 export const updateStation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, address, areaManagerId } = req.body;
+    const { name, address } = req.body;
 
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
     if (address !== undefined) updateData.address = address;
-    if (areaManagerId !== undefined) updateData.areaManagerId = areaManagerId;
 
     const [updatedStation] = await db.update(stations)
       .set(updateData)

@@ -13,8 +13,6 @@ export const stations = pgTable('stations', {
     id: uuid('id').defaultRandom().primaryKey(),
     name: text('name').notNull(),
     address: text('address'),
-    // removed .references() to avoid circular dependency in TS. FK is enforced by SQL.
-    areaManagerId: uuid('area_manager_id'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -26,7 +24,7 @@ export const users = pgTable('users', {
     name: text('name').notNull(),
     role: userRoleEnum('role').notNull(),
     stationId: uuid('station_id').references(() => stations.id, { onDelete: 'set null' }),
-    areaId: text('area_id'),
+    areaManagerId: uuid('area_manager_id'), // Self-reference to users.id (SM -> AM)
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -115,12 +113,7 @@ export const tankerDeliveries = pgTable('tanker_deliveries', {
 // --- Relations ---
 
 export const stationsRelations = relations(stations, ({ one, many }) => ({
-    users: many(users, { relationName: 'stationUsers' }), // Users working at this station
-    areaManager: one(users, {
-        fields: [stations.areaManagerId],
-        references: [users.id],
-        relationName: 'areaManager'
-    }),
+    users: many(users, { relationName: 'stationUsers' }), // Station Managers assigned to this station
     tanks: many(tanks),
     nozzles: many(nozzles),
     shifts: many(shifts),
@@ -133,8 +126,14 @@ export const usersRelations = relations(users, ({ one, many }) => ({
         references: [stations.id],
         relationName: 'stationUsers'
     }),
-    managedStations: many(stations, { relationName: 'areaManager' }),
-    // Add other relations if necessary, e.g. shifts locked by user, cash transfers, etc.
+    // SM -> AM relationship
+    areaManager: one(users, {
+        fields: [users.areaManagerId],
+        references: [users.id],
+        relationName: 'areaManagerRelation'
+    }),
+    // AM -> SMs relationship
+    subordinates: many(users, { relationName: 'areaManagerRelation' }),
 }));
 
 export const tanksRelations = relations(tanks, ({ one, many }) => ({

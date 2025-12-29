@@ -11,6 +11,12 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
             orderBy: desc(users.createdAt),
             with: {
                 station: true,
+                areaManager: {
+                    columns: {
+                        id: true,
+                        name: true,
+                    }
+                }
             }
         });
 
@@ -28,7 +34,7 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
 
 export const createUser = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { name, employeeId, password, role } = req.body;
+        const { name, employeeId, password, role, stationId, areaManagerId } = req.body;
 
         if (!name || !employeeId || !password || !role) {
             res.status(400).json({ error: 'Missing required fields' });
@@ -51,6 +57,8 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<void>
             employeeId,
             password: hashedPassword,
             role: role as 'Admin' | 'SM' | 'AM',
+            stationId: stationId || null,
+            areaManagerId: areaManagerId || null,
         }).returning();
 
         const { password: _, ...userWithoutPassword } = newUser;

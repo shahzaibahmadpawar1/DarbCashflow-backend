@@ -4,7 +4,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { employeeId, password, name, role, stationId, areaId } = req.body;
+    const { employeeId, password, name, role, stationId, areaManagerId } = req.body;
 
     if (!employeeId || !password || !name || !role) {
       res.status(400).json({ error: 'Missing required fields' });
@@ -22,7 +22,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       name,
       role,
       stationId: stationId || null,
-      areaId: areaId || null,
+      areaManagerId: areaManagerId || null,
     });
 
     res.status(201).json({ message: 'User created successfully', user });
