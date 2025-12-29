@@ -68,19 +68,13 @@ export const getTransactions = async (req: AuthRequest, res: Response): Promise<
 export const transferCash = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { toUserId } = req.body;
-
-    if (!toUserId) {
-      res.status(400).json({ error: 'Area Manager ID required' });
-      return;
-    }
 
     if (!req.user) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
-    const transfer = await initiateTransfer(id, req.user.id, toUserId);
+    const transfer = await initiateTransfer(id, req.user.id);
 
     res.json({ message: 'Transfer initiated successfully', transfer });
   } catch (error: any) {

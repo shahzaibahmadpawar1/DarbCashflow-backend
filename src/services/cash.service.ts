@@ -55,21 +55,6 @@ export const createCashTransaction = async (data: {
     status: 'PENDING_ACCEPTANCE',
   }).returning();
 
-  // 3. Auto-initiate transfer to area manager if assigned
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, data.userId),
-    columns: { id: true, areaManagerId: true }
-  });
-
-  if (user?.areaManagerId) {
-    await db.insert(cashTransfers).values({
-      cashTransactionId: transaction.id,
-      fromUserId: data.userId,
-      toUserId: user.areaManagerId,
-      status: 'PENDING_ACCEPTANCE',
-    });
-  }
-
   // Fetch transaction with relations
   return db.query.cashTransactions.findFirst({
     where: eq(cashTransactions.id, transaction.id),
@@ -113,7 +98,7 @@ export const getCashTransactions = async (userId: string, userRole: string, stat
   });
 };
 
-export const initiateTransfer = async (transactionId: string, fromUserId: string, toUserId: string) => {
+export const initiateTransfer = async (transactionId: string, fromUserId: string) => {
   const transaction = await db.query.cashTransactions.findFirst({
     where: eq(cashTransactions.id, transactionId),
   });
@@ -126,10 +111,20 @@ export const initiateTransfer = async (transactionId: string, fromUserId: string
     throw new Error('Transaction already processed');
   }
 
+  // Get the user's assigned area manager
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, fromUserId),
+    columns: { id: true, areaManagerId: true }
+  });
+
+  if (!user?.areaManagerId) {
+    throw new Error('No area manager assigned to this user');
+  }
+
   return db.insert(cashTransfers).values({
     cashTransactionId: transactionId,
     fromUserId,
-    toUserId,
+    toUserId: user.areaManagerId,
     status: 'PENDING_ACCEPTANCE',
   }).returning();
 };
