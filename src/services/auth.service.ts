@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import db from '../config/database';
 import { users } from '../db/schema';
@@ -7,17 +6,6 @@ import { eq } from 'drizzle-orm';
 // Fix the JWT type error by ensuring options are typed correctly
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
-
-export const hashPassword = async (password: string): Promise<string> => {
-  return bcrypt.hash(password, 10);
-};
-
-export const comparePassword = async (
-  password: string,
-  hashedPassword: string
-): Promise<boolean> => {
-  return bcrypt.compare(password, hashedPassword);
-};
 
 export const generateToken = (userId: string): string => {
   return jwt.sign({ userId }, JWT_SECRET, {
@@ -33,11 +21,10 @@ export const createUser = async (data: {
   stationId?: string | null;
   areaManagerId?: string | null;
 }) => {
-  const hashedPassword = await hashPassword(data.password);
-
+  // Store password as plain text (NOT RECOMMENDED FOR PRODUCTION)
   const [newUser] = await db.insert(users).values({
     ...data,
-    password: hashedPassword,
+    password: data.password, // Plain text password
     stationId: data.stationId || null,
     areaManagerId: data.areaManagerId || null,
   }).returning({
@@ -62,9 +49,8 @@ export const loginUser = async (name: string, password: string) => {
     throw new Error('Invalid credentials');
   }
 
-  const isValid = await comparePassword(password, user.password);
-
-  if (!isValid) {
+  // Plain text password comparison
+  if (password !== user.password) {
     throw new Error('Invalid credentials');
   }
 

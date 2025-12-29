@@ -3,7 +3,6 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import db from '../config/database';
 import { users } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
-import bcrypt from 'bcryptjs';
 
 export const getUsers = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
@@ -50,12 +49,11 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<void>
             return;
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-
+        // Store password as plain text (NOT RECOMMENDED FOR PRODUCTION)
         const [newUser] = await db.insert(users).values({
             name,
             employeeId,
-            password: hashedPassword,
+            password: password, // Plain text password
             role: role as 'Admin' | 'SM' | 'AM',
             stationId: stationId || null,
             areaManagerId: areaManagerId || null,
