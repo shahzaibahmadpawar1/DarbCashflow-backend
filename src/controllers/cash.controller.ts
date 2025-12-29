@@ -8,7 +8,7 @@ import {
   depositCash,
   getFloatingCash,
 } from '../services/cash.service';
-import { uploadToCloudinary } from '../utils/cloudinary';
+import { uploadToSupabase } from '../utils/supabase-storage';
 
 export const createTransaction = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -109,12 +109,21 @@ export const depositCashTransfer = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    const receiptUrl = await uploadToCloudinary(file);
+    console.log('Uploading receipt for transaction:', id);
+    console.log('File details:', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    });
+
+    const receiptUrl = await uploadToSupabase(file);
+    console.log('Receipt uploaded successfully:', receiptUrl);
 
     await depositCash(id, receiptUrl);
 
     res.json({ message: 'Cash deposited successfully', receiptUrl });
   } catch (error: any) {
+    console.error('Deposit error:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
   }
 };
