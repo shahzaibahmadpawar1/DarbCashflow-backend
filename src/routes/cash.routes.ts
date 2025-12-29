@@ -12,6 +12,9 @@ import { upload } from '../middleware/upload.middleware';
 
 const router = Router();
 
+// New route without shift ID (auto-creates shift)
+router.post('/transactions', authenticate, authorize('SM'), createTransaction);
+// Old route for backward compatibility
 router.post('/shifts/:shiftId/transactions', authenticate, authorize('SM'), createTransaction);
 router.get('/transactions', authenticate, getTransactions);
 router.post('/transactions/:id/transfer', authenticate, authorize('SM'), transferCash);

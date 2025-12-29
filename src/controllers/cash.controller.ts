@@ -12,7 +12,6 @@ import { uploadToCloudinary } from '../utils/cloudinary';
 
 export const createTransaction = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { shiftId } = req.params;
     const { litersSold, ratePerLiter, cardPayments, bankDeposit } = req.body;
 
     if (!litersSold || !ratePerLiter || cardPayments === undefined) {
@@ -27,13 +26,18 @@ export const createTransaction = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
+    if (!req.user?.id) {
+      res.status(401).json({ error: 'User not authenticated' });
+      return;
+    }
+
     const transaction = await createCashTransaction({
-      shiftId,
-      stationId: stationId,
+      stationId,
       litersSold: parseFloat(litersSold),
       ratePerLiter: parseFloat(ratePerLiter),
       cardPayments: parseFloat(cardPayments || 0),
       bankDeposit: parseFloat(bankDeposit || 0),
+      userId: req.user.id,
     });
 
     res.status(201).json({ message: 'Transaction created successfully', transaction });
