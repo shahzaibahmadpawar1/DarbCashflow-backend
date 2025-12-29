@@ -196,6 +196,7 @@ export const depositCash = async (transactionId: string, receiptUrl: string) => 
 };
 
 export const getFloatingCash = async () => {
+  // Get all transactions that haven't been deposited yet
   const transactions = await db.query.cashTransactions.findMany({
     where: inArray(cashTransactions.status, ['PENDING_ACCEPTANCE', 'WITH_AM']),
     with: {
@@ -207,20 +208,23 @@ export const getFloatingCash = async () => {
         },
       },
     },
+    orderBy: desc(cashTransactions.createdAt),
   });
 
-  const totalFloating = transactions.reduce((sum, t) => sum + t.cashToAM, 0);
+  const totalFloating = transactions.reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
+  const pendingAcceptance = transactions
+    .filter((t) => t.status === 'PENDING_ACCEPTANCE')
+    .reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
+  const withAM = transactions
+    .filter((t) => t.status === 'WITH_AM')
+    .reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
 
   return {
     totalFloating,
     transactions,
     breakdown: {
-      pendingAcceptance: transactions
-        .filter((t) => t.status === 'PENDING_ACCEPTANCE')
-        .reduce((sum, t) => sum + t.cashToAM, 0),
-      withAM: transactions
-        .filter((t) => t.status === 'WITH_AM')
-        .reduce((sum, t) => sum + t.cashToAM, 0),
+      pendingAcceptance,
+      withAM,
     },
   };
 };
