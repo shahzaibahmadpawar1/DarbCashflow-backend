@@ -68,3 +68,30 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<void>
         res.status(500).json({ error: error.message || 'Internal server error' });
     }
 };
+
+export const updateUser = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params;
+        const { stationId, areaManagerId } = req.body;
+
+        const updateData: any = {};
+        if (stationId !== undefined) updateData.stationId = stationId;
+        if (areaManagerId !== undefined) updateData.areaManagerId = areaManagerId;
+
+        const [updatedUser] = await db.update(users)
+            .set(updateData)
+            .where(eq(users.id, id))
+            .returning();
+
+        if (!updatedUser) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+
+        const { password, ...userWithoutPassword } = updatedUser;
+
+        res.json({ message: 'User updated successfully', user: userWithoutPassword });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+};
