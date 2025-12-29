@@ -1,12 +1,25 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+let supabaseClient: SupabaseClient | null = null;
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const getSupabaseClient = () => {
+    if (!supabaseClient) {
+        const supabaseUrl = process.env.SUPABASE_URL || '';
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+        if (!supabaseUrl || !supabaseServiceKey) {
+            throw new Error('Supabase credentials not configured. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.');
+        }
+
+        supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+    }
+    return supabaseClient;
+};
 
 export const uploadToSupabase = async (file: Express.Multer.File): Promise<string> => {
     try {
+        const supabase = getSupabaseClient();
+
         // Generate unique filename
         const timestamp = Date.now();
         const randomString = Math.random().toString(36).substring(7);
@@ -39,4 +52,4 @@ export const uploadToSupabase = async (file: Express.Multer.File): Promise<strin
     }
 };
 
-export default supabase;
+export default getSupabaseClient;
