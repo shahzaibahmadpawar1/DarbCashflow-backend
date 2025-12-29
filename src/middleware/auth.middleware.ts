@@ -27,7 +27,7 @@ export const authenticate = async (
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    const jwtSecret = process.env.JWT_SECRET || 'secret';
 
     const decoded = jwt.verify(token, jwtSecret) as { userId: string };
 
