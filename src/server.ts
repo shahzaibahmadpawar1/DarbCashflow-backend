@@ -13,18 +13,17 @@ dotenv.config();
 const app = express();
 
 // CORS configuration - allow frontend domain in production
-const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL]
-  : ['http://localhost:3000'];
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://darb-cashflow-frontend.vercel.app',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
-
-      // Allow localhost:3000 for local dev against prod backend
-      if (origin === 'http://localhost:3000') return callback(null, true);
 
       if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
         callback(null, true);
