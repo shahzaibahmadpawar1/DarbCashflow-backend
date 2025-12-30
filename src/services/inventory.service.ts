@@ -50,13 +50,18 @@ export const getCurrentShift = async (stationId: string) => {
     with: {
       nozzleReadings: {
         with: {
-          nozzle: true,
+          nozzle: {
+            with: {
+              tank: true,
+            },
+          },
         },
       },
     },
   });
 
   if (!shift) {
+    // Create new shift
     const [newShift] = await db.insert(shifts).values({
       stationId,
       shiftType,
@@ -64,14 +69,53 @@ export const getCurrentShift = async (stationId: string) => {
       status: 'OPEN',
     }).returning();
 
-    // Re-fetch with relations
-    return db.query.shifts.findFirst({
+    // Get all nozzles for this station
+    const stationNozzles = await getNozzlesByStation(stationId);
+
+    // Get previous shift's closing readings
+    const previousShift = await db.query.shifts.findFirst({
+      where: and(
+        eq(shifts.stationId, stationId),
+        eq(shifts.status, 'CLOSED')
+      ),
+      orderBy: [desc(shifts.endTime)],
+      with: {
+        nozzleReadings: true,
+      },
+    });
+
+    // Create opening readings for all nozzles
+    if (stationNozzles.length > 0) {
+      const readingsToCreate = stationNozzles.map((nozzle) => {
+        const previousReading = previousShift?.nozzleReadings?.find(
+          (r) => r.nozzleId === nozzle.id
+        );
+
+        return {
+          shiftId: newShift.id,
+          nozzleId: nozzle.id,
+          openingReading: previousReading?.closingReading || 0,
+          pricePerLiter: 100, // Default price, can be updated by user
+        };
+      });
+
+      await db.insert(nozzleReadings).values(readingsToCreate);
+    }
+
+    // Re-fetch shift with all relations
+    shift = await db.query.shifts.findFirst({
       where: eq(shifts.id, newShift.id),
       with: {
         nozzleReadings: {
-          with: { nozzle: true }
-        }
-      }
+          with: {
+            nozzle: {
+              with: {
+                tank: true,
+              },
+            },
+          },
+        },
+      },
     });
   }
 
