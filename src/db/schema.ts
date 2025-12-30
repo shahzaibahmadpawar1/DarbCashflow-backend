@@ -180,11 +180,13 @@ export const nozzlesRelations = relations(nozzles, ({ one, many }) => ({
     station: one(stations, { fields: [nozzles.stationId], references: [stations.id] }),
     tank: one(tanks, { fields: [nozzles.tankId], references: [tanks.id] }),
     nozzleReadings: many(nozzleReadings),
+    nozzleSales: many(nozzleSales),
 }));
 
 export const shiftsRelations = relations(shifts, ({ one, many }) => ({
     station: one(stations, { fields: [shifts.stationId], references: [stations.id] }),
     nozzleReadings: many(nozzleReadings),
+    nozzleSales: many(nozzleSales),
     cashTransactions: many(cashTransactions),
 }));
 
