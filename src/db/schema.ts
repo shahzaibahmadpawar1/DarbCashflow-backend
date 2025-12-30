@@ -118,6 +118,32 @@ export const tankerDeliveries = pgTable('tanker_deliveries', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// Fuel Prices (Admin-managed)
+export const fuelPrices = pgTable('fuel_prices', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    stationId: uuid('station_id').notNull().references(() => stations.id, { onDelete: 'cascade' }),
+    fuelType: fuelTypeEnum('fuel_type').notNull(),
+    pricePerLiter: doublePrecision('price_per_liter').notNull(),
+    effectiveFrom: timestamp('effective_from').notNull().defaultNow(),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Nozzle Sales (Station Manager input)
+export const nozzleSales = pgTable('nozzle_sales', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    shiftId: uuid('shift_id').notNull().references(() => shifts.id, { onDelete: 'cascade' }),
+    nozzleId: uuid('nozzle_id').notNull().references(() => nozzles.id, { onDelete: 'cascade' }),
+    quantityLiters: doublePrecision('quantity_liters').notNull().default(0),
+    pricePerLiter: doublePrecision('price_per_liter').notNull(),
+    // totalAmount is auto-calculated in DB as generated column
+    cardAmount: doublePrecision('card_amount').default(0),
+    cashAmount: doublePrecision('cash_amount').default(0),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // --- Relations ---
 
 export const stationsRelations = relations(stations, ({ one, many }) => ({
@@ -182,6 +208,16 @@ export const cashTransfersRelations = relations(cashTransfers, ({ one }) => ({
 export const tankerDeliveriesRelations = relations(tankerDeliveries, ({ one }) => ({
     tank: one(tanks, { fields: [tankerDeliveries.tankId], references: [tanks.id] }),
     deliveredBy: one(users, { fields: [tankerDeliveries.deliveredBy], references: [users.id] }),
+}));
+
+export const fuelPricesRelations = relations(fuelPrices, ({ one }) => ({
+    station: one(stations, { fields: [fuelPrices.stationId], references: [stations.id] }),
+    createdByUser: one(users, { fields: [fuelPrices.createdBy], references: [users.id] }),
+}));
+
+export const nozzleSalesRelations = relations(nozzleSales, ({ one }) => ({
+    shift: one(shifts, { fields: [nozzleSales.shiftId], references: [shifts.id] }),
+    nozzle: one(nozzles, { fields: [nozzleSales.nozzleId], references: [nozzles.id] }),
 }));
 
 // Export type helpers if needed

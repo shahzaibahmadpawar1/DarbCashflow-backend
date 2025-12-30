@@ -47,17 +47,6 @@ export const getCurrentShift = async (stationId: string) => {
       lt(shifts.startTime, new Date(shiftStart.getTime() + 12 * 60 * 60 * 1000)),
       inArray(shifts.status, ['OPEN', 'CLOSED'])
     ),
-    with: {
-      nozzleReadings: {
-        with: {
-          nozzle: {
-            with: {
-              tank: true,
-            },
-          },
-        },
-      },
-    },
   });
 
   if (!shift) {
@@ -69,54 +58,11 @@ export const getCurrentShift = async (stationId: string) => {
       status: 'OPEN',
     }).returning();
 
-    // Get all nozzles for this station
-    const stationNozzles = await getNozzlesByStation(stationId);
+    // Initialize nozzle sales for this shift
+    const { initializeNozzleSales } = await import('./fuel.service');
+    await initializeNozzleSales(newShift.id, stationId);
 
-    // Get previous shift's closing readings
-    const previousShift = await db.query.shifts.findFirst({
-      where: and(
-        eq(shifts.stationId, stationId),
-        eq(shifts.status, 'CLOSED')
-      ),
-      orderBy: [desc(shifts.endTime)],
-      with: {
-        nozzleReadings: true,
-      },
-    });
-
-    // Create opening readings for all nozzles
-    if (stationNozzles.length > 0) {
-      const readingsToCreate = stationNozzles.map((nozzle) => {
-        const previousReading = previousShift?.nozzleReadings?.find(
-          (r) => r.nozzleId === nozzle.id
-        );
-
-        return {
-          shiftId: newShift.id,
-          nozzleId: nozzle.id,
-          openingReading: previousReading?.closingReading || 0,
-          pricePerLiter: 100, // Default price, can be updated by user
-        };
-      });
-
-      await db.insert(nozzleReadings).values(readingsToCreate);
-    }
-
-    // Re-fetch shift with all relations
-    shift = await db.query.shifts.findFirst({
-      where: eq(shifts.id, newShift.id),
-      with: {
-        nozzleReadings: {
-          with: {
-            nozzle: {
-              with: {
-                tank: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    shift = newShift;
   }
 
   return shift;

@@ -1,0 +1,145 @@
+import db from '../config/database';
+import { fuelPrices, nozzleSales, nozzles, tanks, shifts } from '../db/schema';
+import { eq, and, desc } from 'drizzle-orm';
+
+// ==================== FUEL PRICES (Admin) ====================
+
+export const setFuelPrice = async (data: {
+    stationId: string;
+    fuelType: string;
+    pricePerLiter: number;
+    createdBy: string;
+}) => {
+    return db.insert(fuelPrices).values({
+        stationId: data.stationId,
+        fuelType: data.fuelType as any,
+        pricePerLiter: data.pricePerLiter,
+        createdBy: data.createdBy,
+    }).returning();
+};
+
+export const getCurrentFuelPrices = async (stationId: string) => {
+    // Get latest price for each fuel type
+    const prices = await db.query.fuelPrices.findMany({
+        where: eq(fuelPrices.stationId, stationId),
+        orderBy: [desc(fuelPrices.effectiveFrom)],
+    });
+
+    // Group by fuel type and get the most recent
+    const latestPrices: Record<string, any> = {};
+    prices.forEach(price => {
+        if (!latestPrices[price.fuelType]) {
+            latestPrices[price.fuelType] = price;
+        }
+    });
+
+    return Object.values(latestPrices);
+};
+
+export const getAllStationPrices = async () => {
+    return db.query.fuelPrices.findMany({
+        with: {
+            station: true,
+        },
+        orderBy: [desc(fuelPrices.effectiveFrom)],
+    });
+};
+
+// ==================== NOZZLE SALES (Station Manager) ====================
+
+export const initializeNozzleSales = async (shiftId: string, stationId: string) => {
+    // Get all nozzles for this station
+    const stationNozzles = await db.query.nozzles.findMany({
+        where: eq(nozzles.stationId, stationId),
+        with: {
+            tank: true,
+        },
+    });
+
+    // Get current fuel prices for the station
+    const currentPrices = await getCurrentFuelPrices(stationId);
+    const priceMap: Record<string, number> = {};
+    currentPrices.forEach(p => {
+        priceMap[p.fuelType] = p.pricePerLiter;
+    });
+
+    // Create nozzle sales records
+    const salesToCreate = stationNozzles.map(nozzle => ({
+        shiftId,
+        nozzleId: nozzle.id,
+        quantityLiters: 0,
+        pricePerLiter: priceMap[nozzle.fuelType] || 100, // Default to 100 if no price set
+        cardAmount: 0,
+        cashAmount: 0,
+    }));
+
+    if (salesToCreate.length > 0) {
+        await db.insert(nozzleSales).values(salesToCreate);
+    }
+
+    return salesToCreate;
+};
+
+export const getNozzleSales = async (shiftId: string) => {
+    return db.query.nozzleSales.findMany({
+        where: eq(nozzleSales.shiftId, shiftId),
+        with: {
+            nozzle: {
+                with: {
+                    tank: true,
+                },
+            },
+        },
+    });
+};
+
+export const updateNozzleSale = async (
+    saleId: string,
+    data: {
+        quantityLiters?: number;
+        cardAmount?: number;
+        cashAmount?: number;
+    }
+) => {
+    return db.update(nozzleSales)
+        .set({
+            ...data,
+            updatedAt: new Date(),
+        })
+        .where(eq(nozzleSales.id, saleId))
+        .returning();
+};
+
+export const submitNozzleSales = async (shiftId: string) => {
+    // Get all sales for this shift
+    const sales = await getNozzleSales(shiftId);
+
+    // Update tank levels
+    for (const sale of sales) {
+        const newLevel = (sale.nozzle.tank.currentLevel || 0) - sale.quantityLiters;
+
+        if (newLevel < 0) {
+            throw new Error(
+                `Insufficient fuel in ${sale.nozzle.tank.fuelType} tank. ` +
+                `Current: ${sale.nozzle.tank.currentLevel}L, Needed: ${sale.quantityLiters}L`
+            );
+        }
+
+        await db.update(tanks)
+            .set({ currentLevel: newLevel, updatedAt: new Date() })
+            .where(eq(tanks.id, sale.nozzle.tank.id));
+    }
+
+    // Lock the shift
+    await db.update(shifts)
+        .set({
+            status: 'CLOSED',
+            locked: true,
+            lockedAt: new Date(),
+            endTime: new Date(),
+            updatedAt: new Date(),
+        })
+        .where(eq(shifts.id, shiftId));
+
+    return { success: true, sales };
+};

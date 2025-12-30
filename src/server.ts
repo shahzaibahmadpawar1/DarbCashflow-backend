@@ -7,6 +7,7 @@ import inventoryRoutes from './routes/inventory.routes';
 import stationsRoutes from './routes/stations.routes';
 import shiftsRoutes from './routes/shifts.routes';
 import usersRoutes from './routes/users.routes';
+import fuelRoutes from './routes/fuel.routes';
 
 dotenv.config();
 
@@ -30,6 +31,8 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/stations', stationsRoutes);
 app.use('/api/shifts', shiftsRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/fuel', fuelRoutes);
+
 
 // Health check
 app.get('/health', (req, res) => {
