@@ -263,6 +263,7 @@ export const recordTankerDelivery = async (data: {
   litersDelivered: number;
   deliveryDate: Date;
   deliveredBy: string;
+  aramcoTicket?: string;
   notes?: string;
 }) => {
   const tank = await db.query.tanks.findFirst({
@@ -291,6 +292,7 @@ export const recordTankerDelivery = async (data: {
       litersDelivered: data.litersDelivered,
       deliveryDate: data.deliveryDate,
       deliveredBy: data.deliveredBy,
+      aramcoTicket: data.aramcoTicket,
       notes: data.notes,
     }).returning();
 
