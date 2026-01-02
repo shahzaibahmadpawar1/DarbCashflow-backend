@@ -6,6 +6,7 @@ import {
   acceptCashTransfer,
   depositCashTransfer,
   getFloatingCashView,
+  getAdminCashSummaryView,
 } from '../controllers/cash.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { upload } from '../middleware/upload.middleware';
@@ -27,6 +28,7 @@ router.post(
   depositCashTransfer
 );
 router.get('/floating-cash', authenticate, authorize('Admin'), getFloatingCashView);
+router.get('/admin-summary', authenticate, authorize('Admin'), getAdminCashSummaryView);
 
 export default router;
 

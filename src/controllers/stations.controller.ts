@@ -59,7 +59,7 @@ export const getStation = async (req: AuthRequest, res: Response): Promise<void>
 
 export const createStation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { name, address } = req.body;
+    const { name, address, stationType } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Station name is required' });
@@ -69,6 +69,7 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
     const [station] = await db.insert(stations).values({
       name,
       address,
+      stationType: stationType || 'OPERATIONAL',
     }).returning();
 
     res.status(201).json({ message: 'Station created successfully', station });
@@ -80,11 +81,12 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
 export const updateStation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, address } = req.body;
+    const { name, address, stationType } = req.body;
 
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
     if (address !== undefined) updateData.address = address;
+    if (stationType !== undefined) updateData.stationType = stationType;
 
     const [updatedStation] = await db.update(stations)
       .set(updateData)

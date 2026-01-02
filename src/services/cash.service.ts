@@ -1,5 +1,5 @@
 import db from '../config/database';
-import { cashTransactions, cashTransfers, shifts, users } from '../db/schema';
+import { cashTransactions, cashTransfers, shifts, users, stations } from '../db/schema';
 import { eq, and, inArray, desc } from 'drizzle-orm';
 
 // Helper function to determine current shift type based on time
@@ -195,9 +195,9 @@ export const depositCash = async (transactionId: string, receiptUrl: string) => 
   });
 };
 
-export const getFloatingCash = async () => {
+export const getFloatingCash = async (stationType?: string) => {
   // Get all transactions that haven't been deposited yet
-  const transactions = await db.query.cashTransactions.findMany({
+  let allTransactions = await db.query.cashTransactions.findMany({
     where: inArray(cashTransactions.status, ['PENDING_ACCEPTANCE', 'WITH_AM']),
     with: {
       station: true,
@@ -210,6 +210,12 @@ export const getFloatingCash = async () => {
     },
     orderBy: desc(cashTransactions.createdAt),
   });
+
+  // Filter by station type if provided
+  let transactions = allTransactions;
+  if (stationType && stationType !== 'ALL') {
+    transactions = allTransactions.filter((t) => t.station?.stationType === stationType);
+  }
 
   const totalFloating = transactions.reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
   const pendingAcceptance = transactions
@@ -226,5 +232,36 @@ export const getFloatingCash = async () => {
       pendingAcceptance,
       withAM,
     },
+  };
+};
+
+export const getAdminCashSummary = async () => {
+  // Get all cash transactions
+  const allTransactions = await db.query.cashTransactions.findMany({
+    with: {
+      station: true,
+    },
+  });
+
+  // Calculate totals
+  const totalCash = allTransactions.reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
+  
+  const cashWithStationManagers = allTransactions
+    .filter((t) => t.status === 'PENDING_ACCEPTANCE')
+    .reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
+  
+  const cashWithAreaManager = allTransactions
+    .filter((t) => t.status === 'WITH_AM')
+    .reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
+  
+  const cashDepositedInBank = allTransactions
+    .filter((t) => t.status === 'DEPOSITED')
+    .reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
+
+  return {
+    totalCash,
+    cashWithStationManagers,
+    cashWithAreaManager,
+    cashDepositedInBank,
   };
 };

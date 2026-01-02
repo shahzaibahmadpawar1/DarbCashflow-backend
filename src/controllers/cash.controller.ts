@@ -7,6 +7,7 @@ import {
   acceptCash,
   depositCash,
   getFloatingCash,
+  getAdminCashSummary,
 } from '../services/cash.service';
 import { uploadToSupabase } from '../utils/supabase-storage';
 
@@ -130,8 +131,18 @@ export const depositCashTransfer = async (req: AuthRequest, res: Response): Prom
 
 export const getFloatingCashView = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const floatingCash = await getFloatingCash();
+    const stationType = req.query.stationType as string | undefined;
+    const floatingCash = await getFloatingCash(stationType);
     res.json(floatingCash);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const getAdminCashSummaryView = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const summary = await getAdminCashSummary();
+    res.json(summary);
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });
   }

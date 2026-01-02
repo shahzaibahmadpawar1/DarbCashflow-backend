@@ -7,6 +7,7 @@ export const shiftTypeEnum = pgEnum('ShiftType', ['DAY', 'NIGHT']);
 export const shiftStatusEnum = pgEnum('ShiftStatus', ['OPEN', 'CLOSED', 'LOCKED']);
 export const cashTransferStatusEnum = pgEnum('CashTransferStatus', ['PENDING_ACCEPTANCE', 'WITH_AM', 'DEPOSITED']);
 export const fuelTypeEnum = pgEnum('FuelType', ['91_GASOLINE', '95_GASOLINE', 'DIESEL']);
+export const stationTypeEnum = pgEnum('StationType', ['OPERATIONAL', 'RENTAL', 'FRANCHISE']);
 
 // --- Tables ---
 
@@ -14,6 +15,7 @@ export const stations = pgTable('stations', {
     id: uuid('id').defaultRandom().primaryKey(),
     name: text('name').notNull(),
     address: text('address'),
+    stationType: stationTypeEnum('station_type').default('OPERATIONAL'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
