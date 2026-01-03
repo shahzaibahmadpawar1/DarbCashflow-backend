@@ -29,43 +29,53 @@ export const getTanksByStation = async (stationId: string) => {
 };
 
 export const getCurrentShift = async (stationId: string) => {
-  const now = new Date();
-  const hour = now.getHours();
-  // shiftType is an enum 'DAY' | 'NIGHT'
-  const shiftType = hour >= 0 && hour < 12 ? 'DAY' : 'NIGHT';
-
-  // Calculate shift start time (midnight for DAY, noon for NIGHT)
-  const shiftStart = new Date(now);
-  shiftStart.setHours(shiftType === 'DAY' ? 0 : 12, 0, 0, 0);
-
-  // Find or create current shift
-  let shift = await db.query.shifts.findFirst({
+  // Find current open shift (not locked)
+  const shift = await db.query.shifts.findFirst({
     where: and(
       eq(shifts.stationId, stationId),
-      eq(shifts.shiftType, shiftType),
-      gte(shifts.startTime, shiftStart),
-      lt(shifts.startTime, new Date(shiftStart.getTime() + 12 * 60 * 60 * 1000)),
-      inArray(shifts.status, ['OPEN', 'CLOSED'])
+      eq(shifts.status, 'OPEN'),
+      eq(shifts.locked, false)
+    ),
+    orderBy: [desc(shifts.startTime)],
+  });
+
+  return shift || null;
+};
+
+export const createShift = async (stationId: string, shiftType: 'DAY' | 'NIGHT') => {
+  // Check if there's already an open shift
+  const existingShift = await db.query.shifts.findFirst({
+    where: and(
+      eq(shifts.stationId, stationId),
+      eq(shifts.status, 'OPEN'),
+      eq(shifts.locked, false)
     ),
   });
 
-  if (!shift) {
-    // Create new shift
-    const [newShift] = await db.insert(shifts).values({
-      stationId,
-      shiftType,
-      startTime: shiftStart,
-      status: 'OPEN',
-    }).returning();
-
-    // Initialize nozzle sales for this shift
-    const { initializeNozzleSales } = await import('./fuel.service');
-    await initializeNozzleSales(newShift.id, stationId);
-
-    shift = newShift;
+  if (existingShift) {
+    throw new Error('There is already an open shift for this station. Please close it first.');
   }
 
-  return shift;
+  // Calculate shift start time (midnight for DAY, noon for NIGHT)
+  const now = new Date();
+  const shiftStart = new Date(now);
+  shiftStart.setHours(shiftType === 'DAY' ? 0 : 12, 0, 0, 0);
+  shiftStart.setMinutes(0, 0, 0);
+
+  // Create new shift
+  const [newShift] = await db.insert(shifts).values({
+    stationId,
+    shiftType,
+    startTime: shiftStart,
+    status: 'OPEN',
+    locked: false,
+  }).returning();
+
+  // Initialize nozzle sales for this shift
+  const { initializeNozzleSales } = await import('./fuel.service');
+  await initializeNozzleSales(newShift.id, stationId);
+
+  return newShift;
 };
 
 export const getShiftReadings = async (shiftId: string) => {

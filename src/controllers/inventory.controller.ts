@@ -4,6 +4,7 @@ import {
   getNozzlesByStation,
   getTanksByStation,
   getCurrentShift,
+  createShift,
   getShiftReadings,
   createShiftReadings,
   lockShift,
@@ -38,6 +39,28 @@ export const getCurrentShiftData = async (req: AuthRequest, res: Response): Prom
     const { stationId } = req.params;
     const shift = await getCurrentShift(stationId);
     res.json({ shift });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const createShiftData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { stationId } = req.params;
+    const { shiftType } = req.body;
+
+    if (!shiftType || (shiftType !== 'DAY' && shiftType !== 'NIGHT')) {
+      res.status(400).json({ error: 'Shift type must be DAY or NIGHT' });
+      return;
+    }
+
+    if (!req.user?.stationId || req.user.stationId !== stationId) {
+      res.status(403).json({ error: 'You can only create shifts for your assigned station' });
+      return;
+    }
+
+    const shift = await createShift(stationId, shiftType);
+    res.status(201).json({ message: 'Shift created successfully', shift });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });
   }

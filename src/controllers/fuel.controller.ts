@@ -6,6 +6,7 @@ import {
     getAllStationPrices,
     getNozzleSales,
     updateNozzleSale,
+    updateShiftPayments,
     submitNozzleSales,
 } from '../services/fuel.service';
 
@@ -81,6 +82,22 @@ export const updateSale = async (req: AuthRequest, res: Response): Promise<void>
         });
 
         res.json({ message: 'Sale updated successfully', sale: updated });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+};
+
+export const updateShiftPayment = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const { shiftId } = req.params;
+        const { cardAmount, cashAmount } = req.body;
+
+        const updateData: { cardAmount?: number; cashAmount?: number } = {};
+        if (cardAmount !== undefined) updateData.cardAmount = parseFloat(cardAmount);
+        if (cashAmount !== undefined) updateData.cashAmount = parseFloat(cashAmount);
+
+        const updated = await updateShiftPayments(shiftId, updateData);
+        res.json({ message: 'Payments updated successfully', sales: updated });
     } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
     }

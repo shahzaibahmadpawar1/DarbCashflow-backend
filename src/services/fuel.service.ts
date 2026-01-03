@@ -68,7 +68,7 @@ export const initializeNozzleSales = async (shiftId: string, stationId: string) 
         shiftId,
         nozzleId: nozzle.id,
         quantityLiters: 0,
-        pricePerLiter: priceMap[nozzle.fuelType] || 100, // Default to 100 if no price set
+        pricePerLiter: priceMap[nozzle.fuelType] || 0, // Default to 0 if no price set
         cardAmount: 0,
         cashAmount: 0,
     }));
@@ -107,6 +107,23 @@ export const updateNozzleSale = async (
             updatedAt: new Date(),
         })
         .where(eq(nozzleSales.id, saleId))
+        .returning();
+};
+
+export const updateShiftPayments = async (
+    shiftId: string,
+    data: {
+        cardAmount?: number;
+        cashAmount?: number;
+    }
+) => {
+    // Update all nozzle sales for this shift with the same card/cash amounts
+    return db.update(nozzleSales)
+        .set({
+            ...data,
+            updatedAt: new Date(),
+        })
+        .where(eq(nozzleSales.shiftId, shiftId))
         .returning();
 };
 
