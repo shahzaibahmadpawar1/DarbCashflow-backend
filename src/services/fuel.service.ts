@@ -187,14 +187,15 @@ export const submitNozzleSales = async (shiftId: string) => {
     // Calculate totals from sales
     let totalLiters = 0;
     let totalRevenue = 0;
-    let totalCardAmount = 0;
-    let totalCashAmount = 0;
+
+    // Card and Cash amounts are stored as SHIFT totals on each nozzle record, so we take the first one
+    // instead of summing them up (which would multiply by nozzle count)
+    const totalCardAmount = sales.length > 0 ? (sales[0].cardAmount || 0) : 0;
+    const totalCashAmount = sales.length > 0 ? (sales[0].cashAmount || 0) : 0;
 
     for (const sale of sales) {
         totalLiters += sale.quantityLiters;
         totalRevenue += sale.quantityLiters * sale.pricePerLiter;
-        totalCardAmount += sale.cardAmount || 0;
-        totalCashAmount += sale.cashAmount || 0;
     }
 
     // Calculate average rate per liter
