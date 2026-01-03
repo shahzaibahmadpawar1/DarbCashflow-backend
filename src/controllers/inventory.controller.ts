@@ -4,6 +4,8 @@ import {
   getNozzlesByStation,
   getTanksByStation,
   getCurrentShift,
+  getAllShifts,
+  getShiftDetails,
   createShift,
   getShiftReadings,
   createShiftReadings,
@@ -61,6 +63,46 @@ export const createShiftData = async (req: AuthRequest, res: Response): Promise<
 
     const shift = await createShift(stationId, shiftType);
     res.status(201).json({ message: 'Shift created successfully', shift });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const getAllShiftsData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { stationId } = req.params;
+    
+    // Check permissions - all roles can view shifts for their station
+    if (req.user?.role === 'SM' && req.user.stationId !== stationId) {
+      res.status(403).json({ error: 'You can only view shifts for your assigned station' });
+      return;
+    }
+
+    const shifts = await getAllShifts(stationId);
+    res.json({ shifts });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const getShiftDetailsData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { shiftId } = req.params;
+    
+    const shift = await getShiftDetails(shiftId);
+    
+    if (!shift) {
+      res.status(404).json({ error: 'Shift not found' });
+      return;
+    }
+
+    // Check permissions
+    if (req.user?.role === 'SM' && req.user.stationId !== shift.stationId) {
+      res.status(403).json({ error: 'You can only view shifts for your assigned station' });
+      return;
+    }
+
+    res.json({ shift });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });
   }

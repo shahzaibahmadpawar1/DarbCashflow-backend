@@ -4,6 +4,8 @@ import {
   getTanks,
   getCurrentShiftData,
   createShiftData,
+  getAllShiftsData,
+  getShiftDetailsData,
   getReadings,
   createReadings,
   lockShiftData,
@@ -19,6 +21,8 @@ const router = Router();
 router.get('/stations/:stationId/nozzles', authenticate, getNozzles);
 router.get('/stations/:stationId/tanks', authenticate, getTanks);
 router.get('/shifts/stations/:stationId/current', authenticate, getCurrentShiftData);
+router.get('/shifts/stations/:stationId/all', authenticate, getAllShiftsData);
+router.get('/shifts/:shiftId/details', authenticate, getShiftDetailsData);
 router.post('/shifts/stations/:stationId/create', authenticate, authorize('SM'), createShiftData);
 router.get('/shifts/:shiftId/readings', authenticate, getReadings);
 router.post('/shifts/:shiftId/readings', authenticate, authorize('SM'), createReadings);

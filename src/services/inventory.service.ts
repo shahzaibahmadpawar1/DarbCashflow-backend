@@ -42,6 +42,43 @@ export const getCurrentShift = async (stationId: string) => {
   return shift || null;
 };
 
+export const getAllShifts = async (stationId: string) => {
+  // Get all shifts for a station, ordered by start time (newest first)
+  return db.query.shifts.findMany({
+    where: eq(shifts.stationId, stationId),
+    orderBy: [desc(shifts.startTime)],
+    with: {
+      nozzleSales: {
+        with: {
+          nozzle: {
+            with: {
+              tank: true,
+            },
+          },
+        },
+      },
+    },
+  });
+};
+
+export const getShiftDetails = async (shiftId: string) => {
+  // Get detailed shift information including sales
+  return db.query.shifts.findFirst({
+    where: eq(shifts.id, shiftId),
+    with: {
+      nozzleSales: {
+        with: {
+          nozzle: {
+            with: {
+              tank: true,
+            },
+          },
+        },
+      },
+    },
+  });
+};
+
 export const createShift = async (stationId: string, shiftType: 'DAY' | 'NIGHT') => {
   // Check if there's already an open shift
   const existingShift = await db.query.shifts.findFirst({
