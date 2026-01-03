@@ -13,10 +13,15 @@ dotenv.config();
 
 const app = express();
 
-// CORS configuration - TEMPORARY: Allow all origins for debugging
+
 app.use(
   cors({
-    origin: true, // Allow ANY origin temporarily to test
+    origin: [
+      "https://azharalibuttar.com",      // Production (cPanel)
+      "https://www.azharalibuttar.com",  // Production (www)
+      "http://localhost:3000",           // Local Development (Vite default port)
+      "http://localhost:5173"            // Alternate Local Port (just in case)
+    ],
     credentials: true,
   })
 );
