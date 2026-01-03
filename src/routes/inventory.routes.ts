@@ -13,6 +13,7 @@ import {
   updateReading,
   createTankerDelivery,
   getDeliveries,
+  deleteShiftData,
 } from '../controllers/inventory.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
@@ -31,6 +32,6 @@ router.post('/shifts/:shiftId/unlock', authenticate, authorize('Admin'), unlockS
 router.put('/shifts/:shiftId/readings/:readingId', authenticate, authorize('SM'), updateReading);
 router.post('/tanks/:tankId/deliveries', authenticate, createTankerDelivery);
 router.get('/deliveries', authenticate, getDeliveries);
+router.delete('/shifts/:shiftId', authenticate, authorize('Admin'), deleteShiftData);
 
 export default router;
-

@@ -15,6 +15,9 @@ import {
   recordTankerDelivery,
   getTankerDeliveries,
 } from '../services/inventory.service';
+import db from '../config/database';
+import { shifts } from '../db/schema';
+import { eq } from 'drizzle-orm';
 
 export const getNozzles = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -71,7 +74,7 @@ export const createShiftData = async (req: AuthRequest, res: Response): Promise<
 export const getAllShiftsData = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { stationId } = req.params;
-    
+
     // Check permissions - all roles can view shifts for their station
     if (req.user?.role === 'SM' && req.user.stationId !== stationId) {
       res.status(403).json({ error: 'You can only view shifts for your assigned station' });
@@ -88,9 +91,9 @@ export const getAllShiftsData = async (req: AuthRequest, res: Response): Promise
 export const getShiftDetailsData = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { shiftId } = req.params;
-    
+
     const shift = await getShiftDetails(shiftId);
-    
+
     if (!shift) {
       res.status(404).json({ error: 'Shift not found' });
       return;
@@ -225,3 +228,15 @@ export const getDeliveries = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
+export const deleteShiftData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { shiftId } = req.params;
+
+    // Delete shift (cascade will delete related nozzle sales, readings, cash transactions)
+    await db.delete(shifts).where(eq(shifts.id, shiftId));
+
+    res.json({ message: 'Shift deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};

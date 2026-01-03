@@ -1,5 +1,5 @@
 import db from '../config/database';
-import { fuelPrices, nozzleSales, nozzles, tanks, shifts } from '../db/schema';
+import { fuelPrices, nozzleSales, nozzles, tanks, shifts, cashTransactions } from '../db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 
 // ==================== FUEL PRICES (Admin) ====================
@@ -131,6 +131,38 @@ export const submitNozzleSales = async (shiftId: string) => {
     // Get all sales for this shift
     const sales = await getNozzleSales(shiftId);
 
+    if (sales.length === 0) {
+        throw new Error('No sales data found for this shift');
+    }
+
+    // Get shift details to get stationId
+    const shift = await db.query.shifts.findFirst({
+        where: eq(shifts.id, shiftId),
+    });
+
+    if (!shift) {
+        throw new Error('Shift not found');
+    }
+
+    // Calculate totals from sales
+    let totalLiters = 0;
+    let totalRevenue = 0;
+    let totalCardAmount = 0;
+    let totalCashAmount = 0;
+
+    for (const sale of sales) {
+        totalLiters += sale.quantityLiters;
+        totalRevenue += sale.quantityLiters * sale.pricePerLiter;
+        totalCardAmount += sale.cardAmount || 0;
+        totalCashAmount += sale.cashAmount || 0;
+    }
+
+    // Calculate average rate per liter
+    const avgRatePerLiter = totalLiters > 0 ? totalRevenue / totalLiters : 0;
+
+    // Cash to AM = Total Cash Amount (cash collected during shift)
+    const cashToAM = totalCashAmount;
+
     // Update tank levels
     for (const sale of sales) {
         const newLevel = (sale.nozzle.tank.currentLevel || 0) - sale.quantityLiters;
@@ -158,5 +190,19 @@ export const submitNozzleSales = async (shiftId: string) => {
         })
         .where(eq(shifts.id, shiftId));
 
-    return { success: true, sales };
+    // Create cash transaction automatically
+    const [cashTransaction] = await db.insert(cashTransactions).values({
+        shiftId: shiftId,
+        stationId: shift.stationId,
+        litersSold: totalLiters,
+        ratePerLiter: avgRatePerLiter,
+        totalRevenue: totalRevenue,
+        cardPayments: totalCardAmount,
+        cashOnHand: totalCashAmount,
+        bankDeposit: 0, // Will be updated later
+        cashToAM: cashToAM,
+        status: 'PENDING_ACCEPTANCE',
+    }).returning();
+
+    return { success: true, sales, cashTransaction };
 };

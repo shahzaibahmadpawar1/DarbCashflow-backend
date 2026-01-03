@@ -314,15 +314,6 @@ export const recordTankerDelivery = async (data: {
   const currentLevel = tank.currentLevel || 0;
   const newLevel = currentLevel + data.litersDelivered;
 
-  // Check capacity if set
-  if (tank.capacity && newLevel > tank.capacity) {
-    throw new Error(
-      `Delivery exceeds tank capacity. ` +
-      `Capacity: ${tank.capacity}L, Current: ${currentLevel}L, ` +
-      `Delivery: ${data.litersDelivered}L, New Total: ${newLevel}L`
-    );
-  }
-
   return db.transaction(async (tx) => {
     const [delivery] = await tx.insert(tankerDeliveries).values({
       tankId: data.tankId,
