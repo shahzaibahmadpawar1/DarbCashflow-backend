@@ -275,10 +275,10 @@ export const CashFlowDashboard = () => {
                   {tx.litersSold.toFixed(2)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  ${tx.totalRevenue.toFixed(2)}
+                  {tx.totalRevenue.toFixed(2)} SAR
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  ${tx.cashToAM.toFixed(2)}
+                  {tx.cashToAM.toFixed(2)} SAR
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <StatusBadge status={tx.status} />

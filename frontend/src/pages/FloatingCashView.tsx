@@ -51,19 +51,19 @@ export const FloatingCashView = () => {
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-sm font-medium text-gray-500">Total Floating Cash</h3>
           <p className="text-3xl font-bold text-primary-600 mt-2">
-            ${data.totalFloating.toFixed(2)}
+            {data.totalFloating.toFixed(2)} SAR
           </p>
         </div>
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-sm font-medium text-gray-500">Pending Acceptance</h3>
           <p className="text-3xl font-bold text-yellow-600 mt-2">
-            ${data.breakdown.pendingAcceptance.toFixed(2)}
+            {data.breakdown.pendingAcceptance.toFixed(2)} SAR
           </p>
         </div>
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-sm font-medium text-gray-500">With Area Managers</h3>
           <p className="text-3xl font-bold text-orange-600 mt-2">
-            ${data.breakdown.withAM.toFixed(2)}
+            {data.breakdown.withAM.toFixed(2)} SAR
           </p>
         </div>
       </div>
@@ -96,7 +96,7 @@ export const FloatingCashView = () => {
                   {tx.station.name}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  ${tx.cashToAM.toFixed(2)}
+                  {tx.cashToAM.toFixed(2)} SAR
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <StatusBadge status={tx.status} />

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 interface Station {
     id: string;
     name: string;
     address: string;
+    stationType?: string;
     areaManagerId?: string;
     areaManager?: { name: string };
 }
@@ -16,13 +18,17 @@ interface User {
 }
 
 export const Stations = () => {
+    const { isAdmin } = useAuth();
     const [stations, setStations] = useState<Station[]>([]);
     const [ams, setAms] = useState<User[]>([]);
     const [showForm, setShowForm] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
         address: '',
+        stationType: 'OPERATIONAL',
     });
+    const [editingStationType, setEditingStationType] = useState<string | null>(null);
+    const [newStationType, setNewStationType] = useState<string>('');
 
     useEffect(() => {
         loadStations();
@@ -57,11 +63,35 @@ export const Stations = () => {
         try {
             await api.post('/api/stations', formData);
             setShowForm(false);
-            setFormData({ name: '', address: '' });
+            setFormData({ name: '', address: '', stationType: 'OPERATIONAL' });
             loadStations();
             alert('Station created successfully');
         } catch (error: any) {
             alert(error.response?.data?.error || 'Failed to create station');
+        }
+    };
+
+    const handleEditStationType = (station: Station) => {
+        setEditingStationType(station.id);
+        setNewStationType(station.stationType || 'OPERATIONAL');
+    };
+
+    const handleCancelEditStationType = () => {
+        setEditingStationType(null);
+        setNewStationType('');
+    };
+
+    const handleSaveStationType = async (stationId: string) => {
+        try {
+            await api.patch(`/api/stations/${stationId}`, {
+                stationType: newStationType,
+            });
+            alert('Station type updated successfully');
+            setEditingStationType(null);
+            setNewStationType('');
+            loadStations();
+        } catch (error: any) {
+            alert(error.response?.data?.error || 'Failed to update station type');
         }
     };
 
@@ -112,6 +142,18 @@ export const Stations = () => {
                                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                                 />
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Station Type</label>
+                                <select
+                                    className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2"
+                                    value={formData.stationType}
+                                    onChange={(e) => setFormData({ ...formData, stationType: e.target.value })}
+                                >
+                                    <option value="OPERATIONAL">Operational</option>
+                                    <option value="RENTAL">Rental</option>
+                                    <option value="FRANCHISE">Franchise</option>
+                                </select>
+                            </div>
                         </div>
                         <button
                             type="submit"
@@ -129,6 +171,7 @@ export const Stations = () => {
                         <tr>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Station Name</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Station Type</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Area Manager</th>
                         </tr>
                     </thead>
@@ -137,6 +180,49 @@ export const Stations = () => {
                             <tr key={s.id}>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{s.name}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{s.address}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {editingStationType === s.id && isAdmin ? (
+                                        <div className="flex items-center gap-2">
+                                            <select
+                                                value={newStationType}
+                                                onChange={(e) => setNewStationType(e.target.value)}
+                                                className="px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                            >
+                                                <option value="OPERATIONAL">Operational</option>
+                                                <option value="RENTAL">Rental</option>
+                                                <option value="FRANCHISE">Franchise</option>
+                                            </select>
+                                            <button
+                                                onClick={() => handleSaveStationType(s.id)}
+                                                className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700"
+                                            >
+                                                Save
+                                            </button>
+                                            <button
+                                                onClick={handleCancelEditStationType}
+                                                className="px-2 py-1 bg-gray-300 text-gray-700 rounded text-xs hover:bg-gray-400"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <span>
+                                                {s.stationType === 'OPERATIONAL' ? 'Operational' : 
+                                                 s.stationType === 'RENTAL' ? 'Rental' : 
+                                                 s.stationType === 'FRANCHISE' ? 'Franchise' : 'Operational'}
+                                            </span>
+                                            {isAdmin && (
+                                                <button
+                                                    onClick={() => handleEditStationType(s)}
+                                                    className="text-primary-600 hover:text-primary-800 text-xs underline"
+                                                >
+                                                    Edit
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     <select
                                         className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-1"
