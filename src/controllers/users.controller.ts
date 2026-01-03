@@ -2,11 +2,31 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import db from '../config/database';
 import { users } from '../db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 
 export const getUsers = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
+        const { role } = req.query;
+        let whereClause = undefined;
+
+        // If user is AM, only show users assigned to them
+        if (req.user?.role === 'AM') {
+            if (role) {
+                whereClause = and(
+                    eq(users.areaManagerId, req.user.id),
+                    eq(users.role, role as any)
+                );
+            } else {
+                whereClause = eq(users.areaManagerId, req.user.id);
+            }
+        }
+        // Logic for Admin or others (filtering by role if provided)
+        else if (role) {
+            whereClause = eq(users.role, role as any);
+        }
+
         const allUsers = await db.query.users.findMany({
+            where: whereClause,
             orderBy: desc(users.createdAt),
             with: {
                 station: true,
