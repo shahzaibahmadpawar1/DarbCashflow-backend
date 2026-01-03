@@ -49,12 +49,52 @@ export const getAllStationPrices = async () => {
 
 export const initializeNozzleSales = async (shiftId: string, stationId: string) => {
     // Get all nozzles for this station
-    const stationNozzles = await db.query.nozzles.findMany({
+    let stationNozzles = await db.query.nozzles.findMany({
         where: eq(nozzles.stationId, stationId),
         with: {
             tank: true,
         },
     });
+
+    // AUTO-INITIALIZE IF EMPTY: Create default tanks and nozzles
+    if (stationNozzles.length === 0) {
+        const fuelTypes = ['91_GASOLINE', '95_GASOLINE', 'DIESEL'];
+
+        for (const fuelType of fuelTypes) {
+            // Check if tank exists
+            let tank = await db.query.tanks.findFirst({
+                where: and(
+                    eq(tanks.stationId, stationId),
+                    eq(tanks.fuelType, fuelType as any)
+                )
+            });
+
+            if (!tank) {
+                // Create tank (without status field as it doesn't exist in schema)
+                const [newTank] = await db.insert(tanks).values({
+                    stationId,
+                    fuelType: fuelType as any,
+                    capacity: 100000,
+                    currentLevel: 0,
+                }).returning();
+                tank = newTank;
+            }
+
+            // Create default nozzles (2 for each fuel type)
+            const prefix = fuelType === '91_GASOLINE' ? '91' : (fuelType === '95_GASOLINE' ? '95' : 'D');
+
+            await db.insert(nozzles).values([
+                { stationId, tankId: tank.id, fuelType: fuelType as any, name: `${prefix}-1` },
+                { stationId, tankId: tank.id, fuelType: fuelType as any, name: `${prefix}-2` }
+            ]);
+        }
+
+        // Re-fetch nozzles
+        stationNozzles = await db.query.nozzles.findMany({
+            where: eq(nozzles.stationId, stationId),
+            with: { tank: true },
+        });
+    }
 
     // Get current fuel prices for the station
     const currentPrices = await getCurrentFuelPrices(stationId);
