@@ -30,6 +30,7 @@ router.post('/shifts/:shiftId/readings', authenticate, authorize('SM'), createRe
 router.post('/shifts/:shiftId/lock', authenticate, authorize('SM'), lockShiftData);
 router.post('/shifts/:shiftId/unlock', authenticate, authorize('Admin'), unlockShiftData);
 router.put('/shifts/:shiftId/readings/:readingId', authenticate, authorize('SM'), updateReading);
+router.post('/stations/:stationId/deliveries', authenticate, createTankerDelivery);
 router.post('/tanks/:tankId/deliveries', authenticate, createTankerDelivery);
 router.get('/deliveries', authenticate, getDeliveries);
 router.delete('/shifts/:shiftId', authenticate, authorize('Admin'), deleteShiftData);

@@ -296,15 +296,46 @@ export const updateShiftReading = async (
 };
 
 export const recordTankerDelivery = async (data: {
-  tankId: string;
+  tankId?: string;
+  stationId?: string;
+  fuelType?: string;
   litersDelivered: number;
   deliveryDate: Date;
   deliveredBy: string;
   aramcoTicket?: string;
   notes?: string;
 }) => {
+  let targetTankId = data.tankId;
+
+  // If no tank ID, find or create tank based on station and fuel type
+  if (!targetTankId && data.stationId && data.fuelType) {
+    const existingTank = await db.query.tanks.findFirst({
+      where: and(
+        eq(tanks.stationId, data.stationId),
+        eq(tanks.fuelType, data.fuelType as any)
+      ),
+    });
+
+    if (existingTank) {
+      targetTankId = existingTank.id;
+    } else {
+      // Create new tank
+      const [newTank] = await db.insert(tanks).values({
+        stationId: data.stationId,
+        fuelType: data.fuelType as any,
+        capacity: 100000, // Default larger capacity
+        currentLevel: 0,
+      }).returning();
+      targetTankId = newTank.id;
+    }
+  }
+
+  if (!targetTankId) {
+    throw new Error('Tank ID or Station ID + Fuel Type required');
+  }
+
   const tank = await db.query.tanks.findFirst({
-    where: eq(tanks.id, data.tankId),
+    where: eq(tanks.id, targetTankId),
   });
 
   if (!tank) {
@@ -316,7 +347,7 @@ export const recordTankerDelivery = async (data: {
 
   return db.transaction(async (tx) => {
     const [delivery] = await tx.insert(tankerDeliveries).values({
-      tankId: data.tankId,
+      tankId: targetTankId, // Use the resolved tank ID
       litersDelivered: data.litersDelivered,
       deliveryDate: data.deliveryDate,
       deliveredBy: data.deliveredBy,
@@ -326,7 +357,7 @@ export const recordTankerDelivery = async (data: {
 
     const [updatedTank] = await tx.update(tanks)
       .set({ currentLevel: newLevel, updatedAt: new Date() })
-      .where(eq(tanks.id, data.tankId))
+      .where(eq(tanks.id, targetTankId))
       .returning();
 
     return { delivery, tank: updatedTank };

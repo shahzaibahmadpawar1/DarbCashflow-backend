@@ -186,8 +186,8 @@ export const updateReading = async (req: AuthRequest, res: Response): Promise<vo
 
 export const createTankerDelivery = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { tankId } = req.params;
-    const { litersDelivered, deliveryDate, aramcoTicket, notes } = req.body;
+    const { tankId, stationId } = req.params;
+    const { litersDelivered, deliveryDate, aramcoTicket, notes, fuelType } = req.body;
 
     if (!litersDelivered) {
       res.status(400).json({ error: 'Liters delivered is required' });
@@ -201,6 +201,8 @@ export const createTankerDelivery = async (req: AuthRequest, res: Response): Pro
 
     const result = await recordTankerDelivery({
       tankId,
+      stationId,
+      fuelType,
       litersDelivered: parseFloat(litersDelivered),
       deliveryDate: deliveryDate ? new Date(deliveryDate) : new Date(),
       deliveredBy: req.user.id,
