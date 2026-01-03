@@ -126,6 +126,8 @@ export const initiateTransfer = async (transactionId: string, fromUserId: string
     fromUserId,
     toUserId: user.areaManagerId,
     status: 'PENDING_ACCEPTANCE',
+    createdAt: new Date(),
+    updatedAt: new Date(),
   }).returning();
 };
 
@@ -153,7 +155,10 @@ export const acceptCash = async (transactionId: string, userId: string) => {
 
   return db.transaction(async (tx) => {
     await tx.update(cashTransfers)
-      .set({ status: 'WITH_AM' })
+      .set({
+        status: 'WITH_AM',
+        updatedAt: new Date()
+      })
       .where(eq(cashTransfers.id, transaction.cashTransfer!.id));
 
     await tx.update(cashTransactions)
@@ -186,6 +191,7 @@ export const depositCash = async (transactionId: string, receiptUrl: string) => 
         status: 'DEPOSITED',
         receiptUrl,
         depositedAt: new Date(),
+        updatedAt: new Date(),
       })
       .where(eq(cashTransfers.id, transaction.cashTransfer!.id));
 
@@ -245,15 +251,15 @@ export const getAdminCashSummary = async () => {
 
   // Calculate totals
   const totalCash = allTransactions.reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
-  
+
   const cashWithStationManagers = allTransactions
     .filter((t) => t.status === 'PENDING_ACCEPTANCE')
     .reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
-  
+
   const cashWithAreaManager = allTransactions
     .filter((t) => t.status === 'WITH_AM')
     .reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
-  
+
   const cashDepositedInBank = allTransactions
     .filter((t) => t.status === 'DEPOSITED')
     .reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
