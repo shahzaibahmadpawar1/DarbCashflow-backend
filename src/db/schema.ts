@@ -4,7 +4,7 @@ import { relations } from 'drizzle-orm';
 // --- Enums ---
 export const userRoleEnum = pgEnum('UserRole', ['SM', 'AM', 'Admin']);
 export const shiftTypeEnum = pgEnum('ShiftType', ['DAY', 'NIGHT']);
-export const shiftStatusEnum = pgEnum('ShiftStatus', ['OPEN', 'CLOSED', 'LOCKED']);
+export const shiftStatusEnum = pgEnum('ShiftStatus', ['OPEN', 'SAVED', 'CLOSED', 'LOCKED']);
 export const cashTransferStatusEnum = pgEnum('CashTransferStatus', ['PENDING_ACCEPTANCE', 'WITH_AM', 'DEPOSITED']);
 export const fuelTypeEnum = pgEnum('FuelType', ['91_GASOLINE', '95_GASOLINE', 'DIESEL']);
 export const stationTypeEnum = pgEnum('StationType', ['OPERATIONAL', 'RENTAL', 'FRANCHISE']);
@@ -49,6 +49,7 @@ export const nozzles = pgTable('nozzles', {
     tankId: uuid('tank_id').notNull().references(() => tanks.id, { onDelete: 'cascade' }),
     fuelType: fuelTypeEnum('fuel_type').notNull(),
     meterLimit: doublePrecision('meter_limit').default(999999),
+    openingReading: doublePrecision('opening_reading').default(0),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -56,7 +57,8 @@ export const nozzles = pgTable('nozzles', {
 export const shifts = pgTable('shifts', {
     id: uuid('id').defaultRandom().primaryKey(),
     stationId: uuid('station_id').notNull().references(() => stations.id, { onDelete: 'cascade' }),
-    shiftType: shiftTypeEnum('shift_type').notNull(),
+    shiftType: shiftTypeEnum('shift_type'), // Nullable for daily shifts
+    shiftDate: timestamp('shift_date'), // Date for daily shifts
     startTime: timestamp('start_time').notNull(),
     endTime: timestamp('end_time'),
     status: shiftStatusEnum('status').default('OPEN'),
@@ -89,6 +91,8 @@ export const cashTransactions = pgTable('cash_transactions', {
     totalRevenue: doublePrecision('total_revenue').notNull(),
     cardPayments: doublePrecision('card_payments').default(0),
     cashOnHand: doublePrecision('cash_on_hand').notNull(),
+    option3Payments: doublePrecision('option3_payments').default(0),
+    option4Payments: doublePrecision('option4_payments').default(0),
     bankDeposit: doublePrecision('bank_deposit').default(0),
     cashToAM: doublePrecision('cash_to_am').notNull(),
     status: cashTransferStatusEnum('status').default('PENDING_ACCEPTANCE'),
@@ -146,6 +150,38 @@ export const nozzleSales = pgTable('nozzle_sales', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// Daily Shift Readings (for new daily shift system)
+export const dailyShiftReadings = pgTable('daily_shift_readings', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    shiftId: uuid('shift_id').notNull().references(() => shifts.id, { onDelete: 'cascade' }),
+    nozzleId: uuid('nozzle_id').notNull().references(() => nozzles.id, { onDelete: 'cascade' }),
+    openingReading: doublePrecision('opening_reading').notNull(),
+    shiftAReading: doublePrecision('shift_a_reading'),
+    shiftBReading: doublePrecision('shift_b_reading'),
+    shiftALiters: doublePrecision('shift_a_liters').default(0),
+    shiftBLiters: doublePrecision('shift_b_liters').default(0),
+    pricePerLiter: doublePrecision('price_per_liter').notNull(),
+    shiftAAmount: doublePrecision('shift_a_amount').default(0),
+    shiftBAmount: doublePrecision('shift_b_amount').default(0),
+    totalAmount: doublePrecision('total_amount').default(0),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Payment Summary (for daily shifts)
+export const paymentSummary = pgTable('payment_summary', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    shiftId: uuid('shift_id').notNull().unique().references(() => shifts.id, { onDelete: 'cascade' }),
+    cardAmount: doublePrecision('card_amount').default(0),
+    cashAmount: doublePrecision('cash_amount').default(0),
+    option3Amount: doublePrecision('option3_amount').default(0),
+    option4Amount: doublePrecision('option4_amount').default(0),
+    totalCollected: doublePrecision('total_collected').default(0),
+    difference: doublePrecision('difference').default(0),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // --- Relations ---
 
 export const stationsRelations = relations(stations, ({ one, many }) => ({
@@ -183,6 +219,7 @@ export const nozzlesRelations = relations(nozzles, ({ one, many }) => ({
     tank: one(tanks, { fields: [nozzles.tankId], references: [tanks.id] }),
     nozzleReadings: many(nozzleReadings),
     nozzleSales: many(nozzleSales),
+    dailyShiftReadings: many(dailyShiftReadings),
 }));
 
 export const shiftsRelations = relations(shifts, ({ one, many }) => ({
@@ -190,6 +227,8 @@ export const shiftsRelations = relations(shifts, ({ one, many }) => ({
     nozzleReadings: many(nozzleReadings),
     nozzleSales: many(nozzleSales),
     cashTransactions: many(cashTransactions),
+    dailyShiftReadings: many(dailyShiftReadings),
+    paymentSummary: one(paymentSummary),
 }));
 
 export const nozzleReadingsRelations = relations(nozzleReadings, ({ one }) => ({
@@ -224,6 +263,16 @@ export const nozzleSalesRelations = relations(nozzleSales, ({ one }) => ({
     nozzle: one(nozzles, { fields: [nozzleSales.nozzleId], references: [nozzles.id] }),
 }));
 
+export const dailyShiftReadingsRelations = relations(dailyShiftReadings, ({ one }) => ({
+    shift: one(shifts, { fields: [dailyShiftReadings.shiftId], references: [shifts.id] }),
+    nozzle: one(nozzles, { fields: [dailyShiftReadings.nozzleId], references: [nozzles.id] }),
+}));
+
+export const paymentSummaryRelations = relations(paymentSummary, ({ one }) => ({
+    shift: one(shifts, { fields: [paymentSummary.shiftId], references: [shifts.id] }),
+}));
+
 // Export type helpers if needed
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+

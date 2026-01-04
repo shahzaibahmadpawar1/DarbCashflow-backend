@@ -14,6 +14,12 @@ import {
   updateShiftReading,
   recordTankerDelivery,
   getTankerDeliveries,
+  createDailyShift,
+  getDailyShift,
+  updateDailyShiftReadings,
+  savePaymentSummary,
+  lockDailyShift,
+  updateNozzleOpeningReading,
 } from '../services/inventory.service';
 import db from '../config/database';
 import { shifts } from '../db/schema';
@@ -242,3 +248,114 @@ export const deleteShiftData = async (req: AuthRequest, res: Response): Promise<
     res.status(500).json({ error: error.message || 'Internal server error' });
   }
 };
+
+// ==================== DAILY SHIFT CONTROLLERS ====================
+
+export const createDailyShiftData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { stationId } = req.params;
+
+    if (!req.user?.stationId || req.user.stationId !== stationId) {
+      res.status(403).json({ error: 'You can only create shifts for your assigned station' });
+      return;
+    }
+
+    const shiftDate = new Date();
+    const shift = await createDailyShift(stationId, shiftDate);
+
+    res.status(201).json({ message: 'Daily shift created successfully', shift });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const getDailyShiftData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { shiftId } = req.params;
+    const shift = await getDailyShift(shiftId);
+
+    if (!shift) {
+      res.status(404).json({ error: 'Shift not found' });
+      return;
+    }
+
+    // Check permissions
+    if (req.user?.role === 'SM' && req.user.stationId !== shift.stationId) {
+      res.status(403).json({ error: 'You can only view shifts for your assigned station' });
+      return;
+    }
+
+    res.json({ shift });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const updateDailyShiftReadingsData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { shiftId } = req.params;
+    const { readings } = req.body;
+
+    if (!readings || !Array.isArray(readings)) {
+      res.status(400).json({ error: 'Readings array is required' });
+      return;
+    }
+
+    const shift = await updateDailyShiftReadings(shiftId, readings);
+    res.json({ message: 'Readings updated successfully', shift });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const savePaymentSummaryData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { shiftId } = req.params;
+    const { cardAmount, cashAmount, option3Amount, option4Amount } = req.body;
+
+    if (cardAmount === undefined || cashAmount === undefined ||
+      option3Amount === undefined || option4Amount === undefined) {
+      res.status(400).json({ error: 'All payment amounts are required' });
+      return;
+    }
+
+    const paymentSummary = await savePaymentSummary(shiftId, {
+      cardAmount: parseFloat(cardAmount),
+      cashAmount: parseFloat(cashAmount),
+      option3Amount: parseFloat(option3Amount),
+      option4Amount: parseFloat(option4Amount),
+    });
+
+    res.json({ message: 'Payment summary saved successfully', paymentSummary });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const lockDailyShiftData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { shiftId } = req.params;
+    const shift = await lockDailyShift(shiftId);
+    res.json({ message: 'Shift locked successfully', shift });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const updateNozzleOpeningReadingData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { nozzleId } = req.params;
+    const { openingReading } = req.body;
+
+    if (openingReading === undefined) {
+      res.status(400).json({ error: 'Opening reading is required' });
+      return;
+    }
+
+    const nozzle = await updateNozzleOpeningReading(nozzleId, parseFloat(openingReading));
+    res.json({ message: 'Opening reading updated successfully', nozzle });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+

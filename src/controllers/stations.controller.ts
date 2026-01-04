@@ -59,18 +59,65 @@ export const getStation = async (req: AuthRequest, res: Response): Promise<void>
 
 export const createStation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { name, address, stationType } = req.body;
+    const { name, address, stationType, nozzles: nozzleConfig, fuelPrices: pricesConfig } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Station name is required' });
       return;
     }
 
+    // Create station
     const [station] = await db.insert(stations).values({
       name,
       address,
       stationType: stationType || 'OPERATIONAL',
     }).returning();
+
+    // If nozzle configuration is provided, create nozzles
+    if (nozzleConfig && Array.isArray(nozzleConfig) && nozzleConfig.length > 0) {
+      const { tanks, nozzles, fuelPrices } = await import('../db/schema');
+
+      // Create tanks for each fuel type
+      const fuelTypes = ['91_GASOLINE', '95_GASOLINE', 'DIESEL'];
+      const tankMap = new Map<string, string>();
+
+      for (const fuelType of fuelTypes) {
+        const [tank] = await db.insert(tanks).values({
+          stationId: station.id,
+          fuelType: fuelType as any,
+          capacity: 100000,
+          currentLevel: 0,
+        }).returning();
+        tankMap.set(fuelType, tank.id);
+      }
+
+      // Create nozzles
+      for (const nozzle of nozzleConfig) {
+        const tankId = tankMap.get(nozzle.fuelType);
+        if (!tankId) continue;
+
+        await db.insert(nozzles).values({
+          name: nozzle.name,
+          stationId: station.id,
+          tankId,
+          fuelType: nozzle.fuelType as any,
+          openingReading: nozzle.openingReading || 0,
+          meterLimit: 999999,
+        });
+      }
+
+      // Create fuel prices
+      if (pricesConfig && Array.isArray(pricesConfig)) {
+        for (const price of pricesConfig) {
+          await db.insert(fuelPrices).values({
+            stationId: station.id,
+            fuelType: price.fuelType as any,
+            pricePerLiter: price.pricePerLiter,
+            createdBy: req.user?.id,
+          });
+        }
+      }
+    }
 
     res.status(201).json({ message: 'Station created successfully', station });
   } catch (error: any) {

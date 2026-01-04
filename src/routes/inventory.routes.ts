@@ -14,6 +14,12 @@ import {
   createTankerDelivery,
   getDeliveries,
   deleteShiftData,
+  createDailyShiftData,
+  getDailyShiftData,
+  updateDailyShiftReadingsData,
+  savePaymentSummaryData,
+  lockDailyShiftData,
+  updateNozzleOpeningReadingData,
 } from '../controllers/inventory.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
@@ -34,5 +40,13 @@ router.post('/stations/:stationId/deliveries', authenticate, createTankerDeliver
 router.post('/tanks/:tankId/deliveries', authenticate, createTankerDelivery);
 router.get('/deliveries', authenticate, getDeliveries);
 router.delete('/shifts/:shiftId', authenticate, authorize('Admin'), deleteShiftData);
+
+// Daily Shift Routes
+router.post('/shifts/stations/:stationId/daily', authenticate, authorize('SM'), createDailyShiftData);
+router.get('/shifts/:shiftId/daily', authenticate, getDailyShiftData);
+router.put('/shifts/:shiftId/daily/readings', authenticate, authorize('SM'), updateDailyShiftReadingsData);
+router.post('/shifts/:shiftId/daily/payment-summary', authenticate, authorize('SM'), savePaymentSummaryData);
+router.post('/shifts/:shiftId/daily/lock', authenticate, authorize('SM'), lockDailyShiftData);
+router.patch('/nozzles/:nozzleId/opening-reading', authenticate, authorize('Admin'), updateNozzleOpeningReadingData);
 
 export default router;
