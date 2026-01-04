@@ -20,6 +20,7 @@ import {
   savePaymentSummaryData,
   lockDailyShiftData,
   updateNozzleOpeningReadingData,
+  getStationDeliveries,
 } from '../controllers/inventory.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
@@ -37,6 +38,7 @@ router.post('/shifts/:shiftId/lock', authenticate, authorize('SM'), lockShiftDat
 router.post('/shifts/:shiftId/unlock', authenticate, authorize('Admin'), unlockShiftData);
 router.put('/shifts/:shiftId/readings/:readingId', authenticate, authorize('SM'), updateReading);
 router.post('/stations/:stationId/deliveries', authenticate, createTankerDelivery);
+router.get('/stations/:stationId/deliveries', authenticate, getStationDeliveries);
 router.post('/tanks/:tankId/deliveries', authenticate, createTankerDelivery);
 router.get('/deliveries', authenticate, getDeliveries);
 router.delete('/shifts/:shiftId', authenticate, authorize('Admin'), deleteShiftData);

@@ -70,6 +70,12 @@ export const getAllShifts = async (stationId: string) => {
           },
         },
       },
+      dailyShiftReadings: {
+        with: {
+          nozzle: true
+        }
+      },
+      paymentSummary: true
     },
   });
 };
@@ -398,6 +404,21 @@ export const getTankerDeliveries = async (tankId?: string) => {
           station: true,
         },
       },
+    },
+    orderBy: [desc(tankerDeliveries.deliveryDate)],
+  });
+};
+
+export const getDeliveriesByStation = async (stationId: string) => {
+  const stationTanks = await db.select({ id: tanks.id }).from(tanks).where(eq(tanks.stationId, stationId));
+  const tankIds = stationTanks.map(t => t.id);
+
+  if (tankIds.length === 0) return [];
+
+  return db.query.tankerDeliveries.findMany({
+    where: inArray(tankerDeliveries.tankId, tankIds),
+    with: {
+      tank: true,
       deliveredBy: {
         columns: { id: true, name: true, employeeId: true },
       },

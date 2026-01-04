@@ -20,6 +20,7 @@ import {
   savePaymentSummary,
   lockDailyShift,
   updateNozzleOpeningReading,
+  getDeliveriesByStation,
 } from '../services/inventory.service';
 import db from '../config/database';
 import { shifts } from '../db/schema';
@@ -230,6 +231,16 @@ export const getDeliveries = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const { tankId } = req.query;
     const deliveries = await getTankerDeliveries(tankId as string | undefined);
+    res.json({ deliveries });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const getStationDeliveries = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { stationId } = req.params;
+    const deliveries = await getDeliveriesByStation(stationId);
     res.json({ deliveries });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });
