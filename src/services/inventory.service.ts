@@ -33,9 +33,22 @@ export const getCurrentShift = async (stationId: string) => {
   const shift = await db.query.shifts.findFirst({
     where: and(
       eq(shifts.stationId, stationId),
-      eq(shifts.status, 'OPEN'),
+      inArray(shifts.status, ['OPEN', 'SAVED']),
       eq(shifts.locked, false)
     ),
+    with: {
+      dailyShiftReadings: {
+        with: {
+          nozzle: {
+            with: {
+              tank: true,
+            },
+          },
+        },
+        orderBy: (readings, { asc }) => [asc(readings.nozzleId)], // Order readings by nozzle
+      },
+      paymentSummary: true,
+    },
     orderBy: [desc(shifts.startTime)],
   });
 
