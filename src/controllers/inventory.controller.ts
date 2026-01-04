@@ -261,7 +261,10 @@ export const createDailyShiftData = async (req: AuthRequest, res: Response): Pro
     }
 
     const shiftDate = new Date();
-    const shift = await createDailyShift(stationId, shiftDate);
+    const newShift = await createDailyShift(stationId, shiftDate);
+
+    // Get the full shift with readings and payment summary
+    const shift = await getDailyShift(newShift.id);
 
     res.status(201).json({ message: 'Daily shift created successfully', shift });
   } catch (error: any) {
