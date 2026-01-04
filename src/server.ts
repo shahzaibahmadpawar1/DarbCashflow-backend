@@ -8,6 +8,7 @@ import stationsRoutes from './routes/stations.routes';
 import shiftsRoutes from './routes/shifts.routes';
 import usersRoutes from './routes/users.routes';
 import fuelRoutes from './routes/fuel.routes';
+import uploadRoutes from './routes/upload.routes';
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.use('/api/stations', stationsRoutes);
 app.use('/api/shifts', shiftsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/fuel', fuelRoutes);
+app.use('/api/upload', uploadRoutes);
 
 
 // Health check
