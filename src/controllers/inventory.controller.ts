@@ -21,6 +21,8 @@ import {
   lockDailyShift,
   updateNozzleOpeningReading,
   getDeliveriesByStation,
+  getAdminStationStats,
+  getStationStats,
 } from '../services/inventory.service';
 import db from '../config/database';
 import { shifts } from '../db/schema';
@@ -368,6 +370,25 @@ export const updateNozzleOpeningReadingData = async (req: AuthRequest, res: Resp
 
     const nozzle = await updateNozzleOpeningReading(nozzleId, parseFloat(openingReading));
     res.json({ message: 'Opening reading updated successfully', nozzle });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const getAdminStats = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const stats = await getAdminStationStats();
+    res.json({ stats });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const getStationStatsData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { stationId } = req.params;
+    const stats = await getStationStats(stationId);
+    res.json({ stats });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });
   }

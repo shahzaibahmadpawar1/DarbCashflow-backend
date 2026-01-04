@@ -1,5 +1,5 @@
 import db from '../config/database';
-import { nozzles, tanks, shifts, nozzleReadings, tankerDeliveries, dailyShiftReadings, paymentSummary, fuelPrices } from '../db/schema';
+import { stations, nozzles, tanks, shifts, nozzleReadings, tankerDeliveries, dailyShiftReadings, paymentSummary, fuelPrices } from '../db/schema';
 import { eq, and, desc, inArray, gte, lt, ne, sql } from 'drizzle-orm';
 
 export const getNozzlesByStation = async (stationId: string) => {
@@ -763,5 +763,55 @@ export const updateNozzleOpeningReading = async (
     .returning();
 
   return updatedNozzle;
+};
+
+export const getAdminStationStats = async () => {
+  // Get all stations
+  const allStations = await db.select().from(stations).orderBy(stations.name);
+
+  try {
+    // Calculate total revenue per station
+    const salesByStation = await db
+      .select({
+        stationId: shifts.stationId,
+        totalRevenue: sql<number>`sum(${dailyShiftReadings.totalAmount})`,
+        totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
+      })
+      .from(dailyShiftReadings)
+      .innerJoin(shifts, eq(dailyShiftReadings.shiftId, shifts.id))
+      .groupBy(shifts.stationId);
+
+    // Map results to stations
+    const stats = allStations.map(station => {
+      const sale = salesByStation.find(s => s.stationId === station.id);
+      return {
+        ...station,
+        totalRevenue: Number(sale?.totalRevenue || 0),
+        totalLiters: Number(sale?.totalLiters || 0),
+      };
+    });
+
+    return stats;
+  } catch (error) {
+    console.error('Error calculating stats:', error);
+    // If query fails (e.g. no readings), return 0 stats
+    return allStations.map(s => ({ ...s, totalRevenue: 0, totalLiters: 0 }));
+  }
+};
+
+export const getStationStats = async (stationId: string) => {
+  const result = await db
+    .select({
+      totalRevenue: sql<number>`sum(${dailyShiftReadings.totalAmount})`,
+      totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
+    })
+    .from(dailyShiftReadings)
+    .innerJoin(shifts, eq(dailyShiftReadings.shiftId, shifts.id))
+    .where(eq(shifts.stationId, stationId));
+
+  return {
+    totalRevenue: Number(result[0]?.totalRevenue || 0),
+    totalLiters: Number(result[0]?.totalLiters || 0),
+  };
 };
 
