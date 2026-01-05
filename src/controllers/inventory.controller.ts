@@ -267,13 +267,15 @@ export const deleteShiftData = async (req: AuthRequest, res: Response): Promise<
 export const createDailyShiftData = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { stationId } = req.params;
+    const { shiftDate: requestedShiftDate } = req.body;
 
     if (!req.user?.stationId || req.user.stationId !== stationId) {
       res.status(403).json({ error: 'You can only create shifts for your assigned station' });
       return;
     }
 
-    const shiftDate = new Date();
+    // Use provided date or default to current date
+    const shiftDate = requestedShiftDate ? new Date(requestedShiftDate) : new Date();
     const newShift = await createDailyShift(stationId, shiftDate);
 
     // Get the full shift with readings and payment summary
