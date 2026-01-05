@@ -120,6 +120,7 @@ export const tankerDeliveries = pgTable('tanker_deliveries', {
     deliveredBy: uuid('delivered_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
     aramcoTicket: text('aramco_ticket'),
     notes: text('notes'),
+    receiptUrl: text('receipt_url'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });

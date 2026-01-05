@@ -196,7 +196,7 @@ export const updateReading = async (req: AuthRequest, res: Response): Promise<vo
 export const createTankerDelivery = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { tankId, stationId } = req.params;
-    const { litersDelivered, deliveryDate, aramcoTicket, notes, fuelType } = req.body;
+    const { litersDelivered, deliveryDate, aramcoTicket, notes, fuelType, receiptUrl } = req.body;
 
     if (!litersDelivered) {
       res.status(400).json({ error: 'Liters delivered is required' });
@@ -217,6 +217,7 @@ export const createTankerDelivery = async (req: AuthRequest, res: Response): Pro
       deliveredBy: req.user.id,
       aramcoTicket,
       notes,
+      receiptUrl,
     });
 
     res.status(201).json({

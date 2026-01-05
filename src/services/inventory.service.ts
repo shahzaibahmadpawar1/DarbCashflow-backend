@@ -323,6 +323,7 @@ export const recordTankerDelivery = async (data: {
   deliveredBy: string;
   aramcoTicket?: string;
   notes?: string;
+  receiptUrl?: string;
 }) => {
   let targetTankId = data.tankId;
 
@@ -372,6 +373,7 @@ export const recordTankerDelivery = async (data: {
       deliveredBy: data.deliveredBy,
       aramcoTicket: data.aramcoTicket,
       notes: data.notes,
+      receiptUrl: data.receiptUrl,
     }).returning();
 
     const [updatedTank] = await tx.update(tanks)
