@@ -52,7 +52,7 @@ router.put('/shifts/:shiftId/daily/readings', authenticate, authorize('SM'), upd
 router.post('/shifts/:shiftId/daily/payment-summary', authenticate, authorize('SM'), savePaymentSummaryData);
 router.post('/shifts/:shiftId/daily/lock', authenticate, authorize('SM'), lockDailyShiftData);
 router.patch('/nozzles/:nozzleId/opening-reading', authenticate, authorize('Admin'), updateNozzleOpeningReadingData);
-router.get('/admin/stats', authenticate, authorize('Admin'), getAdminStats);
+router.get('/admin/stats', authenticate, authorize('Admin', 'OU'), getAdminStats);
 router.get('/stations/:stationId/stats', authenticate, getStationStatsData);
 
 export default router;
