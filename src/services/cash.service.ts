@@ -206,7 +206,14 @@ export const getFloatingCash = async (stationType?: string) => {
   let allTransactions = await db.query.cashTransactions.findMany({
     where: inArray(cashTransactions.status, ['PENDING_ACCEPTANCE', 'WITH_AM']),
     with: {
-      station: true,
+      station: {
+        with: {
+          users: {
+            with: { areaManager: { columns: { name: true, employeeId: true } } },
+            columns: { name: true, employeeId: true, role: true }
+          }
+        }
+      },
       cashTransfer: {
         with: {
           fromUser: { columns: { name: true, employeeId: true } },
@@ -223,6 +230,22 @@ export const getFloatingCash = async (stationType?: string) => {
     transactions = allTransactions.filter((t) => t.station?.stationType === stationType);
   }
 
+  // Populate missing transfer info from Station Users
+  const enhancedTransactions = transactions.map((t: any) => {
+    if (t.cashTransfer) return t;
+
+    const sm = t.station?.users?.find((u: any) => u.role === 'SM');
+    return {
+      ...t,
+      cashTransfer: {
+        fromUser: sm || { name: 'Station' },
+        toUser: sm?.areaManager || { name: 'Area Manager' },
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt
+      }
+    };
+  });
+
   const totalFloating = transactions.reduce((sum, t) => sum + Number(t.cashToAM || 0), 0);
   const pendingAcceptance = transactions
     .filter((t) => t.status === 'PENDING_ACCEPTANCE')
@@ -233,7 +256,7 @@ export const getFloatingCash = async (stationType?: string) => {
 
   return {
     totalFloating,
-    transactions,
+    transactions: enhancedTransactions,
     breakdown: {
       pendingAcceptance,
       withAM,

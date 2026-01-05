@@ -17,7 +17,7 @@ export const createUser = async (data: {
   employeeId: string;
   password: string;
   name: string;
-  role: 'SM' | 'AM' | 'Admin';
+  role: 'SM' | 'AM' | 'Admin' | 'OU';
   stationId?: string | null;
   areaManagerId?: string | null;
 }) => {

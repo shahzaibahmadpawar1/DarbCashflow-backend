@@ -74,7 +74,7 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<void>
             name,
             employeeId,
             password: password, // Plain text password
-            role: role as 'Admin' | 'SM' | 'AM',
+            role: role as 'Admin' | 'SM' | 'AM' | 'OU',
             stationId: stationId || null,
             areaManagerId: areaManagerId || null,
         }).returning();
