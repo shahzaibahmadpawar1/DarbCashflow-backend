@@ -771,21 +771,61 @@ export const updateNozzleOpeningReading = async (
   return updatedNozzle;
 };
 
-export const getAdminStationStats = async () => {
+export const getAdminStationStats = async (filters?: {
+  date?: string;
+  startDate?: string;
+  endDate?: string;
+}) => {
   // Get all stations
   const allStations = await db.select().from(stations).orderBy(stations.name);
 
   try {
-    // Calculate total revenue per station
-    const salesByStation = await db
-      .select({
-        stationId: shifts.stationId,
-        totalRevenue: sql<number>`sum(${dailyShiftReadings.totalAmount})`,
-        totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
-      })
-      .from(dailyShiftReadings)
-      .innerJoin(shifts, eq(dailyShiftReadings.shiftId, shifts.id))
-      .groupBy(shifts.stationId);
+    // Build WHERE conditions for date filtering
+    let whereCondition = undefined;
+
+    if (filters?.date) {
+      // Single date filter - match shifts on this specific date
+      const targetDate = new Date(filters.date);
+      const nextDate = new Date(targetDate);
+      nextDate.setDate(nextDate.getDate() + 1);
+
+      whereCondition = and(
+        sql`${shifts.shiftDate} >= ${targetDate.toISOString()}`,
+        sql`${shifts.shiftDate} < ${nextDate.toISOString()}`
+      );
+    } else if (filters?.startDate && filters?.endDate) {
+      // Date range filter
+      const start = new Date(filters.startDate);
+      const end = new Date(filters.endDate);
+      end.setDate(end.getDate() + 1); // Include end date
+
+      whereCondition = and(
+        sql`${shifts.shiftDate} >= ${start.toISOString()}`,
+        sql`${shifts.shiftDate} < ${end.toISOString()}`
+      );
+    }
+
+    // Calculate total revenue per station with optional date filter
+    const salesByStation = whereCondition
+      ? await db
+        .select({
+          stationId: shifts.stationId,
+          totalRevenue: sql<number>`sum(${dailyShiftReadings.totalAmount})`,
+          totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
+        })
+        .from(dailyShiftReadings)
+        .innerJoin(shifts, eq(dailyShiftReadings.shiftId, shifts.id))
+        .where(whereCondition)
+        .groupBy(shifts.stationId)
+      : await db
+        .select({
+          stationId: shifts.stationId,
+          totalRevenue: sql<number>`sum(${dailyShiftReadings.totalAmount})`,
+          totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
+        })
+        .from(dailyShiftReadings)
+        .innerJoin(shifts, eq(dailyShiftReadings.shiftId, shifts.id))
+        .groupBy(shifts.stationId);
 
     // Map results to stations
     const stats = allStations.map(station => {

@@ -380,7 +380,13 @@ export const updateNozzleOpeningReadingData = async (req: AuthRequest, res: Resp
 
 export const getAdminStats = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const stats = await getAdminStationStats();
+    const { date, startDate, endDate } = req.query;
+
+    const stats = await getAdminStationStats({
+      date: date as string,
+      startDate: startDate as string,
+      endDate: endDate as string,
+    });
     res.json({ stats });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });
