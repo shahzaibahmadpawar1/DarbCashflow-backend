@@ -418,7 +418,11 @@ export const getDeliveriesByStation = async (stationId: string) => {
   return db.query.tankerDeliveries.findMany({
     where: inArray(tankerDeliveries.tankId, tankIds),
     with: {
-      tank: true,
+      tank: {
+        with: {
+          station: true, // Include station information
+        },
+      },
       deliveredBy: {
         columns: { id: true, name: true, employeeId: true },
       },
