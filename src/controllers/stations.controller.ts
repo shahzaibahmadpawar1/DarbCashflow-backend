@@ -151,3 +151,26 @@ export const updateStation = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
+export const deleteStation = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    // Check if station exists
+    const station = await db.query.stations.findFirst({
+      where: eq(stations.id, id),
+    });
+
+    if (!station) {
+      res.status(404).json({ error: 'Station not found' });
+      return;
+    }
+
+    // Delete the station (cascading deletes should handle related records)
+    await db.delete(stations).where(eq(stations.id, id));
+
+    res.json({ message: 'Station deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
