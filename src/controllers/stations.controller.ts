@@ -91,13 +91,16 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
         tankMap.set(fuelType, tank.id);
       }
 
-      // Create nozzles
+      // Create nozzles with station name prefix for uniqueness
       for (const nozzle of nozzleConfig) {
         const tankId = tankMap.get(nozzle.fuelType);
         if (!tankId) continue;
 
+        // Prefix nozzle name with station name to ensure uniqueness
+        const uniqueNozzleName = `${name}-${nozzle.name}`;
+
         await db.insert(nozzles).values({
-          name: nozzle.name,
+          name: uniqueNozzleName,
           stationId: station.id,
           tankId,
           fuelType: nozzle.fuelType as any,
