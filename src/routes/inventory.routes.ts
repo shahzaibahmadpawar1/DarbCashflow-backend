@@ -20,6 +20,9 @@ import {
   savePaymentSummaryData,
   lockDailyShiftData,
   updateNozzleOpeningReadingData,
+  updateNozzleData,
+  addNozzleData,
+  deleteNozzleData,
   getStationDeliveries,
   getStationStatsData,
   getAdminStats,
@@ -52,6 +55,9 @@ router.put('/shifts/:shiftId/daily/readings', authenticate, authorize('SM'), upd
 router.post('/shifts/:shiftId/daily/payment-summary', authenticate, authorize('SM'), savePaymentSummaryData);
 router.post('/shifts/:shiftId/daily/lock', authenticate, authorize('SM'), lockDailyShiftData);
 router.patch('/nozzles/:nozzleId/opening-reading', authenticate, authorize('Admin'), updateNozzleOpeningReadingData);
+router.patch('/nozzles/:nozzleId', authenticate, authorize('Admin'), updateNozzleData);
+router.post('/stations/:stationId/nozzles', authenticate, authorize('Admin'), addNozzleData);
+router.delete('/nozzles/:nozzleId', authenticate, authorize('Admin'), deleteNozzleData);
 router.get('/admin/stats', authenticate, authorize('Admin', 'OU'), getAdminStats);
 router.get('/stations/:stationId/stats', authenticate, getStationStatsData);
 

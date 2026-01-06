@@ -861,3 +861,89 @@ export const getStationStats = async (stationId: string) => {
   };
 };
 
+// ==================== NOZZLE MANAGEMENT SERVICES ====================
+
+export const updateNozzle = async (nozzleId: string, data: { name?: string; fuelType?: string }) => {
+  const updateData: any = {};
+
+  if (data.name !== undefined) {
+    updateData.name = data.name;
+  }
+
+  if (data.fuelType !== undefined) {
+    updateData.fuelType = data.fuelType;
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    throw new Error('No fields to update');
+  }
+
+  const [updatedNozzle] = await db
+    .update(nozzles)
+    .set({ ...updateData, updatedAt: new Date() })
+    .where(eq(nozzles.id, nozzleId))
+    .returning();
+
+  if (!updatedNozzle) {
+    throw new Error('Nozzle not found');
+  }
+
+  return updatedNozzle;
+};
+
+export const addNozzle = async (data: {
+  stationId: string;
+  name: string;
+  fuelType: string;
+  openingReading: number;
+}) => {
+  // First, find or create a tank for this station and fuel type
+  let tankId: string;
+
+  const existingTank = await db.query.tanks.findFirst({
+    where: and(
+      eq(tanks.stationId, data.stationId),
+      eq(tanks.fuelType, data.fuelType as any)
+    ),
+  });
+
+  if (existingTank) {
+    tankId = existingTank.id;
+  } else {
+    // Create new tank
+    const [newTank] = await db.insert(tanks).values({
+      stationId: data.stationId,
+      fuelType: data.fuelType as any,
+      capacity: 100000, // Default capacity
+      currentLevel: 0,
+    }).returning();
+    tankId = newTank.id;
+  }
+
+  const [newNozzle] = await db
+    .insert(nozzles)
+    .values({
+      stationId: data.stationId,
+      tankId: tankId,
+      name: data.name,
+      fuelType: data.fuelType as any,
+      openingReading: data.openingReading,
+    })
+    .returning();
+
+  return newNozzle;
+};
+
+export const deleteNozzle = async (nozzleId: string) => {
+  const [deletedNozzle] = await db
+    .delete(nozzles)
+    .where(eq(nozzles.id, nozzleId))
+    .returning();
+
+  if (!deletedNozzle) {
+    throw new Error('Nozzle not found');
+  }
+
+  return deletedNozzle;
+};
+

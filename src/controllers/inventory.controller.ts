@@ -20,6 +20,9 @@ import {
   savePaymentSummary,
   lockDailyShift,
   updateNozzleOpeningReading,
+  updateNozzle,
+  addNozzle,
+  deleteNozzle,
   getDeliveriesByStation,
   getAdminStationStats,
   getStationStats,
@@ -398,6 +401,58 @@ export const getStationStatsData = async (req: AuthRequest, res: Response): Prom
     const { stationId } = req.params;
     const stats = await getStationStats(stationId);
     res.json({ stats });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+// ==================== NOZZLE MANAGEMENT CONTROLLERS ====================
+
+export const updateNozzleData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { nozzleId } = req.params;
+    const { name, fuelType } = req.body;
+
+    if (!name && !fuelType) {
+      res.status(400).json({ error: 'At least one field (name or fuelType) is required' });
+      return;
+    }
+
+    const nozzle = await updateNozzle(nozzleId, { name, fuelType });
+    res.json({ message: 'Nozzle updated successfully', nozzle });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const addNozzleData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { stationId } = req.params;
+    const { name, fuelType, openingReading } = req.body;
+
+    if (!name || !fuelType) {
+      res.status(400).json({ error: 'Name and fuel type are required' });
+      return;
+    }
+
+    const nozzle = await addNozzle({
+      stationId,
+      name,
+      fuelType,
+      openingReading: openingReading !== undefined ? parseFloat(openingReading) : 0,
+    });
+
+    res.status(201).json({ message: 'Nozzle added successfully', nozzle });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const deleteNozzleData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { nozzleId } = req.params;
+    await deleteNozzle(nozzleId);
+    res.json({ message: 'Nozzle deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });
   }
