@@ -113,3 +113,49 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<void>
         res.status(500).json({ error: error.message || 'Internal server error' });
     }
 };
+
+export const updateUserPassword = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params;
+        const { password } = req.body;
+
+        if (!password || password.length < 6) {
+            res.status(400).json({ error: 'Password must be at least 6 characters long' });
+            return;
+        }
+
+        const [updatedUser] = await db.update(users)
+            .set({ password })
+            .where(eq(users.id, id))
+            .returning();
+
+        if (!updatedUser) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+
+        res.json({ message: 'Password updated successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+};
+
+export const deleteUser = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params;
+
+        const [deletedUser] = await db.delete(users)
+            .where(eq(users.id, id))
+            .returning();
+
+        if (!deletedUser) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+
+        res.json({ message: 'User deleted successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+};
+
