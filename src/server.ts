@@ -10,6 +10,8 @@ import usersRoutes from './routes/users.routes';
 import fuelRoutes from './routes/fuel.routes';
 import uploadRoutes from './routes/upload.routes';
 import officeUserRoutes from './routes/officeUser.routes';
+import nozzleRoutes from './routes/nozzle.routes';
+import fuelInventoryRoutes from './routes/fuelInventory.routes';
 
 dotenv.config();
 
@@ -46,6 +48,8 @@ app.use('/api/users', usersRoutes);
 app.use('/api/fuel', fuelRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/office-users', officeUserRoutes);
+app.use('/api/nozzles', nozzleRoutes);
+app.use('/api/fuel-inventory', fuelInventoryRoutes);
 
 
 // Health check

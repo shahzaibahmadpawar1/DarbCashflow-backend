@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, doublePrecision, boolean, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, doublePrecision, boolean, pgEnum, integer } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // --- Enums ---
@@ -50,6 +50,7 @@ export const nozzles = pgTable('nozzles', {
     fuelType: fuelTypeEnum('fuel_type').notNull(),
     meterLimit: doublePrecision('meter_limit').default(999999),
     openingReading: doublePrecision('opening_reading').default(0),
+    displayOrder: integer('display_order').default(0), // For maintaining nozzle sequence
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });

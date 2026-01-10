@@ -918,13 +918,60 @@ export const getAdminStationStats = async (filters?: {
         .innerJoin(shifts, eq(dailyShiftReadings.shiftId, shifts.id))
         .groupBy(shifts.stationId);
 
+    // Calculate fuel type breakdown per station
+    const fuelBreakdownByStation = whereCondition
+      ? await db
+        .select({
+          stationId: shifts.stationId,
+          fuelType: nozzles.fuelType,
+          totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
+          totalAmount: sql<number>`sum(${dailyShiftReadings.totalAmount})`,
+        })
+        .from(dailyShiftReadings)
+        .innerJoin(shifts, eq(dailyShiftReadings.shiftId, shifts.id))
+        .innerJoin(nozzles, eq(dailyShiftReadings.nozzleId, nozzles.id))
+        .where(whereCondition)
+        .groupBy(shifts.stationId, nozzles.fuelType)
+      : await db
+        .select({
+          stationId: shifts.stationId,
+          fuelType: nozzles.fuelType,
+          totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
+          totalAmount: sql<number>`sum(${dailyShiftReadings.totalAmount})`,
+        })
+        .from(dailyShiftReadings)
+        .innerJoin(shifts, eq(dailyShiftReadings.shiftId, shifts.id))
+        .innerJoin(nozzles, eq(dailyShiftReadings.nozzleId, nozzles.id))
+        .groupBy(shifts.stationId, nozzles.fuelType);
+
     // Map results to stations
     const stats = allStations.map(station => {
       const sale = salesByStation.find(s => s.stationId === station.id);
+
+      // Get fuel type breakdown for this station
+      const fuelBreakdown = fuelBreakdownByStation.filter(f => f.stationId === station.id);
+      const gasoline91 = fuelBreakdown.find(f => f.fuelType === '91_GASOLINE');
+      const gasoline95 = fuelBreakdown.find(f => f.fuelType === '95_GASOLINE');
+      const diesel = fuelBreakdown.find(f => f.fuelType === 'DIESEL');
+
       return {
         ...station,
         totalRevenue: Number(sale?.totalRevenue || 0),
         totalLiters: Number(sale?.totalLiters || 0),
+        fuelBreakdown: {
+          gasoline91: {
+            liters: Number(gasoline91?.totalLiters || 0),
+            amount: Number(gasoline91?.totalAmount || 0),
+          },
+          gasoline95: {
+            liters: Number(gasoline95?.totalLiters || 0),
+            amount: Number(gasoline95?.totalAmount || 0),
+          },
+          diesel: {
+            liters: Number(diesel?.totalLiters || 0),
+            amount: Number(diesel?.totalAmount || 0),
+          },
+        },
       };
     });
 
@@ -932,7 +979,16 @@ export const getAdminStationStats = async (filters?: {
   } catch (error) {
     console.error('Error calculating stats:', error);
     // If query fails (e.g. no readings), return 0 stats
-    return allStations.map(s => ({ ...s, totalRevenue: 0, totalLiters: 0 }));
+    return allStations.map(s => ({
+      ...s,
+      totalRevenue: 0,
+      totalLiters: 0,
+      fuelBreakdown: {
+        gasoline91: { liters: 0, amount: 0 },
+        gasoline95: { liters: 0, amount: 0 },
+        diesel: { liters: 0, amount: 0 },
+      },
+    }));
   }
 };
 
