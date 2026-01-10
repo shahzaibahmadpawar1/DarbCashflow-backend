@@ -77,9 +77,25 @@ export const getCashTransactions = async (userId: string, userRole: string, stat
   if (userRole === 'SM' && stationId) {
     whereClause = eq(cashTransactions.stationId, stationId);
   } else if (userRole === 'AM') {
-    // AM can see transactions from stations in their area
-    // This would need areaId mapping - simplified to status for now as per original code
-    whereClause = inArray(cashTransactions.status, ['PENDING_ACCEPTANCE', 'WITH_AM']);
+    // AM can see transactions from stations managed by their subordinate Station Managers
+    // First, get all Station Managers assigned to this Area Manager
+    const subordinateSMs = await db.query.users.findMany({
+      where: eq(users.areaManagerId, userId),
+      columns: { stationId: true }
+    });
+
+    // Extract station IDs from subordinate SMs
+    const stationIds = subordinateSMs
+      .map(sm => sm.stationId)
+      .filter((id): id is string => id !== null && id !== undefined);
+
+    if (stationIds.length > 0) {
+      // Filter transactions by these stations
+      whereClause = inArray(cashTransactions.stationId, stationIds);
+    } else {
+      // If no stations assigned, return empty array by using impossible condition
+      whereClause = eq(cashTransactions.id, '00000000-0000-0000-0000-000000000000');
+    }
   }
 
   return db.query.cashTransactions.findMany({
