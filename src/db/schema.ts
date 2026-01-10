@@ -166,6 +166,8 @@ export const dailyShiftReadings = pgTable('daily_shift_readings', {
     shiftAAmount: doublePrecision('shift_a_amount').default(0),
     shiftBAmount: doublePrecision('shift_b_amount').default(0),
     totalAmount: doublePrecision('total_amount').default(0),
+    shiftAPhotoUrl: text('shift_a_photo_url'),
+    shiftBPhotoUrl: text('shift_b_photo_url'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });

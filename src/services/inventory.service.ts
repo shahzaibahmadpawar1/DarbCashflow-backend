@@ -531,6 +531,8 @@ export const updateDailyShiftReadings = async (
     id: string;
     shiftAReading?: number;
     shiftBReading?: number;
+    shiftAPhotoUrl?: string; // Optional photo for Shift A
+    shiftBPhotoUrl?: string; // Optional photo for Shift B
   }>
 ) => {
   const shift = await db.query.shifts.findFirst({
@@ -549,6 +551,7 @@ export const updateDailyShiftReadings = async (
   for (const reading of readings) {
     const existingReading = await db.query.dailyShiftReadings.findFirst({
       where: eq(dailyShiftReadings.id, reading.id),
+      with: { nozzle: true } // Fetch nozzle to get name for error message
     });
 
     if (!existingReading) {
@@ -557,6 +560,18 @@ export const updateDailyShiftReadings = async (
 
     const shiftAReading = reading.shiftAReading ?? existingReading.shiftAReading;
     const shiftBReading = reading.shiftBReading ?? existingReading.shiftBReading;
+
+    // VALIDATION LOGIC
+    // 1. Shift A Reading cannot be lower than Opening Reading
+    if (shiftAReading && shiftAReading < existingReading.openingReading) {
+      throw new Error(`Shift A reading for ${existingReading.nozzle.name} cannot be lower than opening reading (${existingReading.openingReading})`);
+    }
+
+    // 2. Shift B Reading cannot be lower than Shift A Reading (if exists) or Opening Reading
+    const previousReading = shiftAReading || existingReading.openingReading;
+    if (shiftBReading && shiftBReading < previousReading) {
+      throw new Error(`Shift B reading for ${existingReading.nozzle.name} cannot be lower than previous reading (${previousReading})`);
+    }
 
     // Calculate liters
     const shiftALiters = shiftAReading ? shiftAReading - existingReading.openingReading : 0;
@@ -567,17 +582,22 @@ export const updateDailyShiftReadings = async (
     const shiftBAmount = shiftBLiters * existingReading.pricePerLiter;
     const totalAmount = shiftAAmount + shiftBAmount;
 
+    const updateData: any = {
+      shiftAReading,
+      shiftBReading,
+      shiftALiters,
+      shiftBLiters,
+      shiftAAmount,
+      shiftBAmount,
+      totalAmount,
+      updatedAt: new Date(),
+    };
+
+    if (reading.shiftAPhotoUrl !== undefined) updateData.shiftAPhotoUrl = reading.shiftAPhotoUrl;
+    if (reading.shiftBPhotoUrl !== undefined) updateData.shiftBPhotoUrl = reading.shiftBPhotoUrl;
+
     await db.update(dailyShiftReadings)
-      .set({
-        shiftAReading,
-        shiftBReading,
-        shiftALiters,
-        shiftBLiters,
-        shiftAAmount,
-        shiftBAmount,
-        totalAmount,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(dailyShiftReadings.id, reading.id));
   }
 
