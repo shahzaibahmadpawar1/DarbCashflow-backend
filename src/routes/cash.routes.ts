@@ -7,6 +7,8 @@ import {
   depositCashTransfer,
   getFloatingCashView,
   getAdminCashSummaryView,
+  createBankDepositData,
+  getAreaManagerReportData,
 } from '../controllers/cash.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { upload } from '../middleware/upload.middleware';
@@ -29,6 +31,10 @@ router.post(
 );
 router.get('/floating-cash', authenticate, authorize('Admin'), getFloatingCashView);
 router.get('/admin-summary', authenticate, authorize('Admin'), getAdminCashSummaryView);
+
+// Bank Deposits
+router.post('/deposits', authenticate, authorize('AM'), createBankDepositData);
+router.get('/am/report', authenticate, authorize('AM'), getAreaManagerReportData);
 
 export default router;
 

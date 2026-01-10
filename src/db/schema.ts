@@ -109,6 +109,7 @@ export const cashTransfers = pgTable('cash_transfers', {
     receiptUrl: text('receipt_url'),
     acceptedAt: timestamp('accepted_at'),
     depositedAt: timestamp('deposited_at'),
+    amountDeposited: doublePrecision('amount_deposited').default(0),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -122,6 +123,7 @@ export const tankerDeliveries = pgTable('tanker_deliveries', {
     aramcoTicket: text('aramco_ticket'),
     notes: text('notes'),
     receiptUrl: text('receipt_url'),
+    isUnlocked: boolean('is_unlocked').default(false),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -186,6 +188,34 @@ export const paymentSummary = pgTable('payment_summary', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// Bank Deposits (Area Manager -> Bank)
+export const bankDeposits = pgTable('bank_deposits', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    depositedBy: uuid('deposited_by').notNull().references(() => users.id),
+    amount: doublePrecision('amount').notNull(),
+    depositDate: timestamp('deposit_date').notNull(),
+    receiptUrl: text('receipt_url'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const bankDepositItems = pgTable('bank_deposit_items', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    bankDepositId: uuid('bank_deposit_id').notNull().references(() => bankDeposits.id, { onDelete: 'cascade' }),
+    cashTransferId: uuid('cash_transfer_id').notNull().references(() => cashTransfers.id),
+    amount: doublePrecision('amount').notNull(),
+    createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Office User Stations (Junction table for OU -> Stations many-to-many)
+export const officeUserStations = pgTable('office_user_stations', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    stationId: uuid('station_id').notNull().references(() => stations.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow(),
+});
+
 // --- Relations ---
 
 export const stationsRelations = relations(stations, ({ one, many }) => ({
@@ -194,6 +224,7 @@ export const stationsRelations = relations(stations, ({ one, many }) => ({
     nozzles: many(nozzles),
     shifts: many(shifts),
     cashTransactions: many(cashTransactions),
+    officeUserAssignments: many(officeUserStations), // Office Users assigned to this station
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -210,6 +241,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     }),
     // AM -> SMs relationship
     subordinates: many(users, { relationName: 'areaManagerRelation' }),
+    // Office User -> Assigned Stations (many-to-many)
+    assignedStations: many(officeUserStations),
 }));
 
 export const tanksRelations = relations(tanks, ({ one, many }) => ({
@@ -274,6 +307,21 @@ export const dailyShiftReadingsRelations = relations(dailyShiftReadings, ({ one 
 
 export const paymentSummaryRelations = relations(paymentSummary, ({ one }) => ({
     shift: one(shifts, { fields: [paymentSummary.shiftId], references: [shifts.id] }),
+}));
+
+export const bankDepositsRelations = relations(bankDeposits, ({ one, many }) => ({
+    user: one(users, { fields: [bankDeposits.depositedBy], references: [users.id] }),
+    items: many(bankDepositItems),
+}));
+
+export const bankDepositItemsRelations = relations(bankDepositItems, ({ one }) => ({
+    deposit: one(bankDeposits, { fields: [bankDepositItems.bankDepositId], references: [bankDeposits.id] }),
+    transfer: one(cashTransfers, { fields: [bankDepositItems.cashTransferId], references: [cashTransfers.id] }),
+}));
+
+export const officeUserStationsRelations = relations(officeUserStations, ({ one }) => ({
+    user: one(users, { fields: [officeUserStations.userId], references: [users.id] }),
+    station: one(stations, { fields: [officeUserStations.stationId], references: [stations.id] }),
 }));
 
 // Export type helpers if needed

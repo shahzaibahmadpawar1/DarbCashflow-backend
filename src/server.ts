@@ -9,6 +9,7 @@ import shiftsRoutes from './routes/shifts.routes';
 import usersRoutes from './routes/users.routes';
 import fuelRoutes from './routes/fuel.routes';
 import uploadRoutes from './routes/upload.routes';
+import officeUserRoutes from './routes/officeUser.routes';
 
 dotenv.config();
 
@@ -44,6 +45,7 @@ app.use('/api/shifts', shiftsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/fuel', fuelRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/office-users', officeUserRoutes);
 
 
 // Health check

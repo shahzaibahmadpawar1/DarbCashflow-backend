@@ -1,6 +1,7 @@
 import db from '../config/database';
-import { cashTransactions, cashTransfers, shifts, users, stations } from '../db/schema';
-import { eq, and, inArray, desc } from 'drizzle-orm';
+import { cashTransactions, cashTransfers, shifts, users, stations, bankDeposits, bankDepositItems } from '../db/schema';
+import { eq, and, inArray, desc, sql, gte, lte } from 'drizzle-orm';
+import { getAccessibleStationIds } from './officeUser.service';
 
 // Helper function to determine current shift type based on time
 const getCurrentShiftType = (): 'DAY' | 'NIGHT' => {
@@ -71,35 +72,83 @@ export const createCashTransaction = async (data: {
   });
 };
 
-export const getCashTransactions = async (userId: string, userRole: string, stationId?: string | null) => {
-  let whereClause = undefined;
 
+export const getCashTransactions = async (
+  userId: string,
+  userRole: string,
+  stationId?: string | null,
+  dateFilter?: { type: 'single' | 'range', date?: string, startDate?: string, endDate?: string }
+) => {
+  const whereClauses: any[] = [];
+
+  // Role-based filtering
   if (userRole === 'SM' && stationId) {
-    whereClause = eq(cashTransactions.stationId, stationId);
+    whereClauses.push(eq(cashTransactions.stationId, stationId));
   } else if (userRole === 'AM') {
     // AM can see transactions from stations managed by their subordinate Station Managers
-    // First, get all Station Managers assigned to this Area Manager
     const subordinateSMs = await db.query.users.findMany({
       where: eq(users.areaManagerId, userId),
       columns: { stationId: true }
     });
 
-    // Extract station IDs from subordinate SMs
     const stationIds = subordinateSMs
       .map(sm => sm.stationId)
       .filter((id): id is string => id !== null && id !== undefined);
 
     if (stationIds.length > 0) {
-      // Filter transactions by these stations
-      whereClause = inArray(cashTransactions.stationId, stationIds);
+      whereClauses.push(inArray(cashTransactions.stationId, stationIds));
     } else {
-      // If no stations assigned, return empty array by using impossible condition
-      whereClause = eq(cashTransactions.id, '00000000-0000-0000-0000-000000000000');
+      whereClauses.push(eq(cashTransactions.id, '00000000-0000-0000-0000-000000000000'));
+    }
+  } else if (userRole === 'OU') {
+    // Office User - filter by assigned stations
+    const accessibleStations = await getAccessibleStationIds(userId);
+
+    if (accessibleStations === 'all') {
+      // Should not happen for OU, but handle gracefully
+    } else if (accessibleStations.length > 0) {
+      whereClauses.push(inArray(cashTransactions.stationId, accessibleStations));
+    } else {
+      whereClauses.push(eq(cashTransactions.id, '00000000-0000-0000-0000-000000000000'));
     }
   }
 
+  // Date filtering
+  if (dateFilter) {
+    if (dateFilter.type === 'single' && dateFilter.date) {
+      // Filter for a single date (start of day to end of day)
+      const startOfDay = new Date(dateFilter.date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(dateFilter.date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      whereClauses.push(
+        and(
+          gte(cashTransactions.createdAt, startOfDay),
+          lte(cashTransactions.createdAt, endOfDay)
+        )
+      );
+    } else if (dateFilter.type === 'range' && dateFilter.startDate && dateFilter.endDate) {
+      // Filter for a date range
+      const startOfRange = new Date(dateFilter.startDate);
+      startOfRange.setHours(0, 0, 0, 0);
+      const endOfRange = new Date(dateFilter.endDate);
+      endOfRange.setHours(23, 59, 59, 999);
+
+      whereClauses.push(
+        and(
+          gte(cashTransactions.createdAt, startOfRange),
+          lte(cashTransactions.createdAt, endOfRange)
+        )
+      );
+    }
+  }
+
+  // Combine all where clauses
+  const finalWhereClause = whereClauses.length > 0 ? and(...whereClauses) : undefined;
+
   return db.query.cashTransactions.findMany({
-    where: whereClause,
+    where: finalWhereClause,
     with: {
       station: true,
       shift: true,
@@ -190,38 +239,62 @@ export const depositCash = async (transactionId: string, receiptUrl: string) => 
     with: { cashTransfer: true },
   });
 
-  if (!transaction) {
-    throw new Error('Transaction not found');
+  if (!transaction || !transaction.cashTransfer) {
+    throw new Error('Transaction or transfer not found');
   }
 
-  if (!transaction.cashTransfer) {
-    throw new Error('Transfer not found');
-  }
-
-  if (transaction.cashTransfer.status !== 'WITH_AM') {
-    throw new Error('Cash must be accepted before deposit');
-  }
-
-  return db.transaction(async (tx) => {
-    await tx.update(cashTransfers)
-      .set({
-        status: 'DEPOSITED',
-        receiptUrl,
-        depositedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(cashTransfers.id, transaction.cashTransfer!.id));
-
-    await tx.update(cashTransactions)
-      .set({ status: 'DEPOSITED' })
-      .where(eq(cashTransactions.id, transactionId));
+  return createBankDeposit({
+    userId: transaction.cashTransfer.toUserId,
+    amount: transaction.cashToAM || 0,
+    depositDate: new Date(),
+    receiptUrl,
+    notes: 'Deposited via individual action',
+    transferIds: [transaction.cashTransfer.id]
   });
 };
 
-export const getFloatingCash = async (stationType?: string) => {
+
+export const getFloatingCash = async (
+  stationType?: string,
+  dateFilter?: { type: 'single' | 'range', date?: string, startDate?: string, endDate?: string }
+) => {
+  // Build where clauses
+  const whereClauses: any[] = [
+    inArray(cashTransactions.status, ['PENDING_ACCEPTANCE', 'WITH_AM'])
+  ];
+
+  // Add date filtering
+  if (dateFilter) {
+    if (dateFilter.type === 'single' && dateFilter.date) {
+      const startOfDay = new Date(dateFilter.date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(dateFilter.date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      whereClauses.push(
+        and(
+          gte(cashTransactions.createdAt, startOfDay),
+          lte(cashTransactions.createdAt, endOfDay)
+        )
+      );
+    } else if (dateFilter.type === 'range' && dateFilter.startDate && dateFilter.endDate) {
+      const startOfRange = new Date(dateFilter.startDate);
+      startOfRange.setHours(0, 0, 0, 0);
+      const endOfRange = new Date(dateFilter.endDate);
+      endOfRange.setHours(23, 59, 59, 999);
+
+      whereClauses.push(
+        and(
+          gte(cashTransactions.createdAt, startOfRange),
+          lte(cashTransactions.createdAt, endOfRange)
+        )
+      );
+    }
+  }
+
   // Get all transactions that haven't been deposited yet
   let allTransactions = await db.query.cashTransactions.findMany({
-    where: inArray(cashTransactions.status, ['PENDING_ACCEPTANCE', 'WITH_AM']),
+    where: and(...whereClauses),
     with: {
       station: {
         with: {
@@ -309,5 +382,143 @@ export const getAdminCashSummary = async () => {
     cashWithStationManagers,
     cashWithAreaManager,
     cashDepositedInBank,
+  };
+};
+
+export const createBankDeposit = async (data: {
+  userId: string;
+  amount: number;
+  depositDate: Date;
+  receiptUrl?: string;
+  notes?: string;
+  transferIds: string[];
+}) => {
+  return db.transaction(async (tx) => {
+    // 1. Create Deposit
+    const [deposit] = await tx.insert(bankDeposits).values({
+      depositedBy: data.userId,
+      amount: data.amount,
+      depositDate: data.depositDate,
+      receiptUrl: data.receiptUrl,
+      notes: data.notes
+    }).returning();
+
+    // 2. Fetch and distribute across selected transfers
+    if (data.transferIds && data.transferIds.length > 0) {
+      const transfers = await tx.query.cashTransfers.findMany({
+        where: inArray(cashTransfers.id, data.transferIds),
+        with: { cashTransaction: true },
+        orderBy: [desc(cashTransfers.createdAt)] // Newest first? User said One by one or all. FIFO implies Oldest first.
+      });
+      // Re-sort oldest first for FIFO payment
+      transfers.sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
+
+      let remainingDeposit = data.amount;
+
+      for (const transfer of transfers) {
+        if (remainingDeposit <= 0) break;
+
+        const transferTotal = transfer.cashTransaction.cashToAM || 0;
+        const alreadyDeposited = transfer.amountDeposited || 0;
+        const unpaid = transferTotal - alreadyDeposited;
+
+        if (unpaid <= 0.01) continue;
+
+        const toPay = Math.min(unpaid, remainingDeposit); // Only pay what is needed or what is left
+
+        // Track item
+        await tx.insert(bankDepositItems).values({
+          bankDepositId: deposit.id,
+          cashTransferId: transfer.id,
+          amount: toPay
+        });
+
+        const newAmountDeposited = alreadyDeposited + toPay;
+        const isFullyDeposited = newAmountDeposited >= transferTotal - 0.01;
+
+        await tx.update(cashTransfers).set({
+          amountDeposited: newAmountDeposited,
+          status: isFullyDeposited ? 'DEPOSITED' : 'WITH_AM',
+          depositedAt: isFullyDeposited ? new Date() : undefined,
+          receiptUrl: data.receiptUrl,
+          updatedAt: new Date(),
+        }).where(eq(cashTransfers.id, transfer.id));
+
+        if (isFullyDeposited) {
+          await tx.update(cashTransactions).set({
+            status: 'DEPOSITED'
+          }).where(eq(cashTransactions.id, transfer.cashTransactionId));
+        }
+
+        remainingDeposit -= toPay;
+      }
+    }
+
+    return deposit;
+  });
+};
+
+export const getAreaManagerDailyReport = async (userId: string, dateStr: string) => {
+  const date = new Date(dateStr);
+  const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
+  const prevDayEnd = new Date(startOfDay); // Point in time before today
+
+  // 1. Calculate History (Opening Balance)
+  // Cash Accepted by AM before today
+  const acceptedPreToday = await db.query.cashTransfers.findMany({
+    where: and(
+      eq(cashTransfers.toUserId, userId),
+      inArray(cashTransfers.status, ['WITH_AM', 'DEPOSITED']),
+      lte(cashTransfers.acceptedAt, prevDayEnd)
+    ),
+    with: { cashTransaction: true }
+  });
+  const totalAcceptedPre = acceptedPreToday.reduce((sum, t) => sum + (t.cashTransaction.cashToAM || 0), 0);
+
+  // Cash Deposited by AM before today
+  const depositsPreToday = await db.query.bankDeposits.findMany({
+    where: and(
+      eq(bankDeposits.depositedBy, userId),
+      lte(bankDeposits.depositDate, prevDayEnd)
+    )
+  });
+  const totalDepositedPre = depositsPreToday.reduce((sum, d) => sum + d.amount, 0);
+
+  const openingBalance = totalAcceptedPre - totalDepositedPre;
+
+  // 2. Today's Activity
+  // Cash Accepted Today
+  const acceptedToday = await db.query.cashTransfers.findMany({
+    where: and(
+      eq(cashTransfers.toUserId, userId),
+      inArray(cashTransfers.status, ['WITH_AM', 'DEPOSITED']),
+      gte(cashTransfers.acceptedAt, startOfDay),
+      lte(cashTransfers.acceptedAt, endOfDay)
+    ),
+    with: { cashTransaction: true }
+  });
+  const totalAcceptedToday = acceptedToday.reduce((sum, t) => sum + (t.cashTransaction.cashToAM || 0), 0);
+
+  // Deposit Today
+  const depositsToday = await db.query.bankDeposits.findMany({
+    where: and(
+      eq(bankDeposits.depositedBy, userId),
+      gte(bankDeposits.depositDate, startOfDay),
+      lte(bankDeposits.depositDate, endOfDay)
+    )
+  });
+  const totalDepositedToday = depositsToday.reduce((sum, d) => sum + d.amount, 0);
+
+  // 3. Closing
+  const currentBalance = openingBalance + totalAcceptedToday - totalDepositedToday;
+
+  return {
+    date: dateStr,
+    openingBalance,
+    receivedToday: totalAcceptedToday,
+    depositedToday: totalDepositedToday,
+    closingBalance: currentBalance,
+    deposits: depositsToday // Include list for detail
   };
 };

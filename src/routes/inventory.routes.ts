@@ -26,6 +26,8 @@ import {
   getStationDeliveries,
   getStationStatsData,
   getAdminStats,
+  updateTankerDeliveryData,
+  toggleTankerLockData,
 } from '../controllers/inventory.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
@@ -60,5 +62,9 @@ router.post('/stations/:stationId/nozzles', authenticate, authorize('Admin'), ad
 router.delete('/nozzles/:nozzleId', authenticate, authorize('Admin'), deleteNozzleData);
 router.get('/admin/stats', authenticate, authorize('Admin', 'OU'), getAdminStats);
 router.get('/stations/:stationId/stats', authenticate, getStationStatsData);
+
+// Tanker Delivery Editing
+router.put('/tanker-deliveries/:deliveryId', authenticate, authorize('SM', 'Admin'), updateTankerDeliveryData);
+router.put('/tanker-deliveries/:deliveryId/lock', authenticate, authorize('Admin'), toggleTankerLockData);
 
 export default router;

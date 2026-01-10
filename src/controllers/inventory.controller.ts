@@ -26,6 +26,8 @@ import {
   getDeliveriesByStation,
   getAdminStationStats,
   getStationStats,
+  updateTankerDelivery,
+  toggleTankerLock,
 } from '../services/inventory.service';
 import db from '../config/database';
 import { shifts } from '../db/schema';
@@ -253,6 +255,51 @@ export const getStationDeliveries = async (req: AuthRequest, res: Response): Pro
   }
 };
 
+export const updateTankerDeliveryData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { deliveryId } = req.params;
+    const { litersDelivered, deliveryDate, aramcoTicket, notes, receiptUrl } = req.body;
+
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const updatedDelivery = await updateTankerDelivery(
+      deliveryId,
+      {
+        litersDelivered: litersDelivered ? parseFloat(litersDelivered) : undefined,
+        deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
+        aramcoTicket,
+        notes,
+        receiptUrl
+      },
+      req.user.role
+    );
+
+    res.json({ message: 'Delivery updated successfully', delivery: updatedDelivery });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
+export const toggleTankerLockData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { deliveryId } = req.params;
+    const { isUnlocked } = req.body;
+
+    if (req.user?.role !== 'Admin') {
+      res.status(403).json({ error: 'Only admins can toggle delivery lock status' });
+      return;
+    }
+
+    const updatedDelivery = await toggleTankerLock(deliveryId, !!isUnlocked);
+    res.json({ message: 'Delivery lock status updated', delivery: updatedDelivery });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+
 export const deleteShiftData = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { shiftId } = req.params;
@@ -386,7 +433,11 @@ export const savePaymentSummaryData = async (req: AuthRequest, res: Response): P
 export const lockDailyShiftData = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { shiftId } = req.params;
-    const shift = await lockDailyShift(shiftId);
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const shift = await lockDailyShift(shiftId, req.user.id);
     res.json({ message: 'Shift locked successfully', shift });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });

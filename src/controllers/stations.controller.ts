@@ -2,7 +2,8 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import db from '../config/database';
 import { stations } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
+import { getAccessibleStationIds } from '../services/officeUser.service';
 
 export const getStations = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -24,6 +25,19 @@ export const getStations = async (req: AuthRequest, res: Response): Promise<void
     } else if (req.user.role === 'Admin') {
       // Admin can see all stations
       result = await db.query.stations.findMany();
+    } else if (req.user.role === 'OU') {
+      // Office User - see only assigned stations
+      const accessibleStations = await getAccessibleStationIds(req.user.id);
+
+      if (accessibleStations === 'all') {
+        result = await db.query.stations.findMany();
+      } else if (accessibleStations.length > 0) {
+        result = await db.query.stations.findMany({
+          where: inArray(stations.id, accessibleStations)
+        });
+      } else {
+        result = [];
+      }
     } else {
       result = [];
     }

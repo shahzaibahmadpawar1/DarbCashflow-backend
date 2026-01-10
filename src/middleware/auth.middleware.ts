@@ -69,3 +69,18 @@ export const authorize = (...roles: string[]) => {
     next();
   };
 };
+
+// Middleware to require Admin role
+export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  if (req.user.role !== 'Admin') {
+    res.status(403).json({ error: 'Forbidden - Admin access required' });
+    return;
+  }
+
+  next();
+};

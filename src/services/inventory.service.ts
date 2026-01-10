@@ -385,6 +385,60 @@ export const recordTankerDelivery = async (data: {
   });
 };
 
+export const updateTankerDelivery = async (
+  deliveryId: string,
+  updates: Partial<{
+    litersDelivered: number;
+    deliveryDate: Date;
+    aramcoTicket: string;
+    notes: string;
+    receiptUrl: string;
+  }>,
+  userRole: string
+) => {
+  const delivery = await db.query.tankerDeliveries.findFirst({
+    where: eq(tankerDeliveries.id, deliveryId),
+    with: { tank: true }
+  });
+
+  if (!delivery) throw new Error('Delivery not found');
+
+  if (userRole !== 'Admin' && !delivery.isUnlocked) {
+    throw new Error('You do not have permission to edit this delivery');
+  }
+
+  // Calculate difference if liters changed to update tank level
+  let literDiff = 0;
+  if (updates.litersDelivered !== undefined) {
+    literDiff = updates.litersDelivered - delivery.litersDelivered;
+  }
+
+  return db.transaction(async (tx) => {
+    const [updatedDelivery] = await tx.update(tankerDeliveries)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(tankerDeliveries.id, deliveryId))
+      .returning();
+
+    if (literDiff !== 0) {
+      await tx.update(tanks)
+        .set({ currentLevel: sql`${tanks.currentLevel} + ${literDiff}` })
+        .where(eq(tanks.id, delivery.tankId));
+    }
+
+    return updatedDelivery;
+  });
+};
+
+export const toggleTankerLock = async (deliveryId: string, isUnlocked: boolean) => {
+  return db.update(tankerDeliveries)
+    .set({ isUnlocked, updatedAt: new Date() })
+    .where(eq(tankerDeliveries.id, deliveryId))
+    .returning();
+};
+
 export const getTankerDeliveries = async (tankId?: string) => {
   if (tankId) {
     return db.query.tankerDeliveries.findMany({
@@ -672,7 +726,7 @@ export const savePaymentSummary = async (
 /**
  * Lock daily shift and update nozzle opening readings
  */
-export const lockDailyShift = async (shiftId: string) => {
+export const lockDailyShift = async (shiftId: string, userId?: string) => {
   const shift = await getDailyShift(shiftId);
 
   if (!shift) {
@@ -743,9 +797,9 @@ export const lockDailyShift = async (shiftId: string) => {
     const paymentSum = shift.paymentSummary;
 
     if (paymentSum) {
-      const { cashTransactions } = await import('../db/schema');
+      const { cashTransactions, cashTransfers, users } = await import('../db/schema');
 
-      await tx.insert(cashTransactions).values({
+      const [newTransaction] = await tx.insert(cashTransactions).values({
         shiftId: shift.id,
         stationId: shift.stationId,
         litersSold: totalLitersSold,
@@ -758,7 +812,24 @@ export const lockDailyShift = async (shiftId: string) => {
         bankDeposit: 0,
         cashToAM: paymentSum.cashAmount || 0, // Cash amount goes to AM
         status: 'PENDING_ACCEPTANCE',
-      });
+      }).returning();
+
+      if (userId) {
+        // Find the user's Area Manager
+        const user = await tx.query.users.findFirst({
+          where: eq(users.id, userId),
+          columns: { areaManagerId: true }
+        });
+
+        if (user?.areaManagerId) {
+          await tx.insert(cashTransfers).values({
+            cashTransactionId: newTransaction.id,
+            fromUserId: userId,
+            toUserId: user.areaManagerId,
+            status: 'PENDING_ACCEPTANCE',
+          });
+        }
+      }
     }
 
     return getDailyShift(shiftId);
