@@ -257,6 +257,35 @@ export const deleteShiftData = async (req: AuthRequest, res: Response): Promise<
   try {
     const { shiftId } = req.params;
 
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    // Get the shift to check ownership and lock status
+    const shift = await db.query.shifts.findFirst({
+      where: eq(shifts.id, shiftId),
+    });
+
+    if (!shift) {
+      res.status(404).json({ error: 'Shift not found' });
+      return;
+    }
+
+    // Check permissions
+    if (req.user.role === 'SM') {
+      // Station Managers can only delete unlocked shifts from their own station
+      if (shift.stationId !== req.user.stationId) {
+        res.status(403).json({ error: 'You can only delete shifts from your assigned station' });
+        return;
+      }
+      if (shift.locked) {
+        res.status(403).json({ error: 'Cannot delete a locked shift. Please contact an admin to unlock it first.' });
+        return;
+      }
+    }
+    // Admins can delete any shift (no restrictions)
+
     // Delete shift (cascade will delete related nozzle sales, readings, cash transactions)
     await db.delete(shifts).where(eq(shifts.id, shiftId));
 

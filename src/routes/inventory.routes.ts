@@ -46,7 +46,7 @@ router.post('/stations/:stationId/deliveries', authenticate, createTankerDeliver
 router.get('/stations/:stationId/deliveries', authenticate, getStationDeliveries);
 router.post('/tanks/:tankId/deliveries', authenticate, createTankerDelivery);
 router.get('/deliveries', authenticate, getDeliveries);
-router.delete('/shifts/:shiftId', authenticate, authorize('Admin'), deleteShiftData);
+router.delete('/shifts/:shiftId', authenticate, authorize('SM', 'Admin'), deleteShiftData);
 
 // Daily Shift Routes
 router.post('/shifts/stations/:stationId/daily', authenticate, authorize('SM'), createDailyShiftData);
