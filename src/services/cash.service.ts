@@ -173,6 +173,7 @@ export const acceptCash = async (transactionId: string, userId: string) => {
     await tx.update(cashTransfers)
       .set({
         status: 'WITH_AM',
+        acceptedAt: new Date(),
         updatedAt: new Date()
       })
       .where(eq(cashTransfers.id, transaction.cashTransfer!.id));

@@ -107,6 +107,7 @@ export const cashTransfers = pgTable('cash_transfers', {
     toUserId: uuid('to_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     status: cashTransferStatusEnum('status').default('PENDING_ACCEPTANCE'),
     receiptUrl: text('receipt_url'),
+    acceptedAt: timestamp('accepted_at'),
     depositedAt: timestamp('deposited_at'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
