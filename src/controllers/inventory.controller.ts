@@ -465,10 +465,17 @@ export const getAdminStats = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const { date, startDate, endDate } = req.query;
 
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
     const stats = await getAdminStationStats({
       date: date as string,
       startDate: startDate as string,
       endDate: endDate as string,
+      userId: req.user.id,
+      userRole: req.user.role,
     });
     res.json({ stats });
   } catch (error: any) {

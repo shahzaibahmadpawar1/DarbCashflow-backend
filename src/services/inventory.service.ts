@@ -915,9 +915,31 @@ export const getAdminStationStats = async (filters?: {
   date?: string;
   startDate?: string;
   endDate?: string;
+  userId?: string;
+  userRole?: string;
 }) => {
-  // Get all stations
-  const allStations = await db.select().from(stations).orderBy(stations.name);
+  // Get stations based on user role
+  let allStations: any[];
+
+  if (filters?.userRole === 'OU' && filters?.userId) {
+    // Office User - only get assigned stations
+    const { getAccessibleStationIds } = await import('../services/officeUser.service');
+    const accessibleStationIds = await getAccessibleStationIds(filters.userId);
+
+    if (accessibleStationIds === 'all') {
+      allStations = await db.select().from(stations).orderBy(stations.name);
+    } else if (Array.isArray(accessibleStationIds) && accessibleStationIds.length > 0) {
+      allStations = await db.select().from(stations)
+        .where(inArray(stations.id, accessibleStationIds))
+        .orderBy(stations.name);
+    } else {
+      // No stations assigned - return empty array
+      allStations = [];
+    }
+  } else {
+    // Admin or other roles - get all stations
+    allStations = await db.select().from(stations).orderBy(stations.name);
+  }
 
   try {
     // Build WHERE conditions for date filtering
