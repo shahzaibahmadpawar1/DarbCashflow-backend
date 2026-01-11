@@ -35,6 +35,16 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
                         id: true,
                         name: true,
                     }
+                },
+                assignedStations: {
+                    with: {
+                        station: {
+                            columns: {
+                                id: true,
+                                name: true,
+                            }
+                        }
+                    }
                 }
             }
         });
