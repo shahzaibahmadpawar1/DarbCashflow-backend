@@ -46,14 +46,30 @@ export const getCurrentShift = async (stationId: string) => {
             },
           },
         },
-        orderBy: (readings, { asc }) => [asc(readings.nozzleId)], // Order readings by nozzle
       },
       paymentSummary: true,
     },
     orderBy: [desc(shifts.startTime)],
   });
 
-  return shift || null;
+  if (!shift) return null;
+
+  // Sort dailyShiftReadings by nozzle displayOrder to maintain consistent sequence
+  if (shift.dailyShiftReadings) {
+    shift.dailyShiftReadings.sort((a, b) => {
+      const orderA = a.nozzle.displayOrder || 999999;
+      const orderB = b.nozzle.displayOrder || 999999;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      // Fallback to createdAt if displayOrder is the same
+      const timeA = a.nozzle.createdAt ? new Date(a.nozzle.createdAt).getTime() : 0;
+      const timeB = b.nozzle.createdAt ? new Date(b.nozzle.createdAt).getTime() : 0;
+      return timeA - timeB;
+    });
+  }
+
+  return shift;
 };
 
 export const getAllShifts = async (stationId: string) => {
