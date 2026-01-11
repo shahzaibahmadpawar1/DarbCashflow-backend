@@ -8,7 +8,7 @@ export const getNozzlesByStation = async (stationId: string) => {
     with: {
       tank: true,
     },
-    orderBy: sql`${nozzles.name} asc`,
+    orderBy: (nozzles, { asc }) => [asc(nozzles.displayOrder), asc(nozzles.createdAt)],
   });
 };
 
@@ -169,6 +169,7 @@ export const createShiftReadings = async (
   // Get all nozzles for the station
   const allNozzles = await db.query.nozzles.findMany({
     where: eq(nozzles.stationId, stationId),
+    orderBy: (nozzles, { asc }) => [asc(nozzles.displayOrder), asc(nozzles.createdAt)],
   });
 
   // Get previous shift's closing readings as opening readings
@@ -519,7 +520,7 @@ export const createDailyShift = async (stationId: string, shiftDate: Date) => {
   // Get all nozzles for the station
   const stationNozzles = await db.query.nozzles.findMany({
     where: eq(nozzles.stationId, stationId),
-    orderBy: sql`${nozzles.name} asc`,
+    orderBy: (nozzles, { asc }) => [asc(nozzles.displayOrder), asc(nozzles.createdAt)],
   });
 
   // Get current fuel prices for the station

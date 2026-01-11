@@ -106,7 +106,8 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
       }
 
       // Create nozzles with station name prefix for uniqueness
-      for (const nozzle of nozzleConfig) {
+      for (let i = 0; i < nozzleConfig.length; i++) {
+        const nozzle = nozzleConfig[i];
         const tankId = tankMap.get(nozzle.fuelType);
         if (!tankId) continue;
 
@@ -120,6 +121,7 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
           fuelType: nozzle.fuelType as any,
           openingReading: nozzle.openingReading || 0,
           meterLimit: 999999,
+          displayOrder: i + 1, // Set display order based on creation sequence
         });
       }
 

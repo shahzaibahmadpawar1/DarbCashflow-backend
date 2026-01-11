@@ -54,6 +54,7 @@ export const initializeNozzleSales = async (shiftId: string, stationId: string) 
         with: {
             tank: true,
         },
+        orderBy: (nozzles, { asc }) => [asc(nozzles.displayOrder), asc(nozzles.createdAt)],
     });
 
     // AUTO-INITIALIZE IF EMPTY: Create default tanks and nozzles
@@ -82,10 +83,11 @@ export const initializeNozzleSales = async (shiftId: string, stationId: string) 
 
             // Create default nozzles (2 for each fuel type)
             const prefix = fuelType === '91_GASOLINE' ? '91' : (fuelType === '95_GASOLINE' ? '95' : 'D');
+            const baseOrder = (fuelTypes.indexOf(fuelType) * 2) + 1;
 
             await db.insert(nozzles).values([
-                { stationId, tankId: tank.id, fuelType: fuelType as any, name: `${prefix}-1` },
-                { stationId, tankId: tank.id, fuelType: fuelType as any, name: `${prefix}-2` }
+                { stationId, tankId: tank.id, fuelType: fuelType as any, name: `${prefix}-1`, displayOrder: baseOrder },
+                { stationId, tankId: tank.id, fuelType: fuelType as any, name: `${prefix}-2`, displayOrder: baseOrder + 1 }
             ]);
         }
 
@@ -93,6 +95,7 @@ export const initializeNozzleSales = async (shiftId: string, stationId: string) 
         stationNozzles = await db.query.nozzles.findMany({
             where: eq(nozzles.stationId, stationId),
             with: { tank: true },
+            orderBy: (nozzles, { asc }) => [asc(nozzles.displayOrder), asc(nozzles.createdAt)],
         });
     }
 
