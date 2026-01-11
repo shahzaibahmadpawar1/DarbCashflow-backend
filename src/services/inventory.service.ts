@@ -793,27 +793,57 @@ export const lockDailyShift = async (shiftId: string, userId?: string) => {
         .where(eq(tanks.id, tankId));
     }
 
-    // Create cash transaction
+    // Create or update cash transaction
     const totalRevenue = shift.dailyShiftReadings?.reduce((sum, r) => sum + (r.totalAmount || 0), 0) || 0;
     const paymentSum = shift.paymentSummary;
 
     if (paymentSum) {
       const { cashTransactions, cashTransfers, users } = await import('../db/schema');
 
-      const [newTransaction] = await tx.insert(cashTransactions).values({
-        shiftId: shift.id,
-        stationId: shift.stationId,
-        litersSold: totalLitersSold,
-        ratePerLiter: totalRevenue / (totalLitersSold || 1), // Average rate
-        totalRevenue,
-        cardPayments: paymentSum.cardAmount || 0,
-        cashOnHand: paymentSum.cashAmount || 0,
-        option3Payments: paymentSum.option3Amount || 0,
-        option4Payments: paymentSum.option4Amount || 0,
-        bankDeposit: 0,
-        cashToAM: paymentSum.cashAmount || 0, // Cash amount goes to AM
-        status: 'PENDING_ACCEPTANCE',
-      }).returning();
+      // Check if cash transaction already exists for this shift (in case of re-locking after unlock)
+      const existingTransaction = await tx.query.cashTransactions.findFirst({
+        where: eq(cashTransactions.shiftId, shift.id),
+      });
+
+      let transactionId: string;
+
+      if (existingTransaction) {
+        // Update existing transaction instead of creating a new one
+        await tx.update(cashTransactions)
+          .set({
+            litersSold: totalLitersSold,
+            ratePerLiter: totalRevenue / (totalLitersSold || 1),
+            totalRevenue,
+            cardPayments: paymentSum.cardAmount || 0,
+            cashOnHand: paymentSum.cashAmount || 0,
+            option3Payments: paymentSum.option3Amount || 0,
+            option4Payments: paymentSum.option4Amount || 0,
+            cashToAM: paymentSum.cashAmount || 0,
+            status: 'PENDING_ACCEPTANCE',
+            updatedAt: new Date(),
+          })
+          .where(eq(cashTransactions.id, existingTransaction.id));
+
+        transactionId = existingTransaction.id;
+      } else {
+        // Create new transaction
+        const [newTransaction] = await tx.insert(cashTransactions).values({
+          shiftId: shift.id,
+          stationId: shift.stationId,
+          litersSold: totalLitersSold,
+          ratePerLiter: totalRevenue / (totalLitersSold || 1), // Average rate
+          totalRevenue,
+          cardPayments: paymentSum.cardAmount || 0,
+          cashOnHand: paymentSum.cashAmount || 0,
+          option3Payments: paymentSum.option3Amount || 0,
+          option4Payments: paymentSum.option4Amount || 0,
+          bankDeposit: 0,
+          cashToAM: paymentSum.cashAmount || 0, // Cash amount goes to AM
+          status: 'PENDING_ACCEPTANCE',
+        }).returning();
+
+        transactionId = newTransaction.id;
+      }
 
       if (userId) {
         // Find the user's Area Manager
@@ -823,12 +853,30 @@ export const lockDailyShift = async (shiftId: string, userId?: string) => {
         });
 
         if (user?.areaManagerId) {
-          await tx.insert(cashTransfers).values({
-            cashTransactionId: newTransaction.id,
-            fromUserId: userId,
-            toUserId: user.areaManagerId,
-            status: 'PENDING_ACCEPTANCE',
+          // Check if cash transfer already exists
+          const existingTransfer = await tx.query.cashTransfers.findFirst({
+            where: eq(cashTransfers.cashTransactionId, transactionId),
           });
+
+          if (existingTransfer) {
+            // Update existing transfer
+            await tx.update(cashTransfers)
+              .set({
+                fromUserId: userId,
+                toUserId: user.areaManagerId,
+                status: 'PENDING_ACCEPTANCE',
+                updatedAt: new Date(),
+              })
+              .where(eq(cashTransfers.id, existingTransfer.id));
+          } else {
+            // Create new transfer
+            await tx.insert(cashTransfers).values({
+              cashTransactionId: transactionId,
+              fromUserId: userId,
+              toUserId: user.areaManagerId,
+              status: 'PENDING_ACCEPTANCE',
+            });
+          }
         }
       }
     }
