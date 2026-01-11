@@ -73,7 +73,7 @@ export const getStation = async (req: AuthRequest, res: Response): Promise<void>
 
 export const createStation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { name, address, stationType, nozzles: nozzleConfig, fuelPrices: pricesConfig } = req.body;
+    const { name, address, stationType, purchaseCredits, nozzles: nozzleConfig, fuelPrices: pricesConfig } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Station name is required' });
@@ -85,6 +85,7 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
       name,
       address,
       stationType: stationType || 'OPERATIONAL',
+      purchaseCredits: purchaseCredits || 0,
     }).returning();
 
     // If nozzle configuration is provided, create nozzles
@@ -147,12 +148,13 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
 export const updateStation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, address, stationType } = req.body;
+    const { name, address, stationType, purchaseCredits } = req.body;
 
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
     if (address !== undefined) updateData.address = address;
     if (stationType !== undefined) updateData.stationType = stationType;
+    if (purchaseCredits !== undefined) updateData.purchaseCredits = purchaseCredits;
 
     const [updatedStation] = await db.update(stations)
       .set(updateData)

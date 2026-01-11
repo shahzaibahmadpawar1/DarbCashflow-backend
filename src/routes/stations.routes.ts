@@ -8,6 +8,7 @@ router.get('/', authenticate, getStations);
 router.post('/', authenticate, createStation);
 router.get('/:id', authenticate, getStation);
 router.patch('/:id', authenticate, updateStation);
+router.put('/:id', authenticate, updateStation); // Support both PUT and PATCH
 router.delete('/:id', authenticate, deleteStation);
 
 export default router;
