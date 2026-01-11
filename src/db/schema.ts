@@ -16,6 +16,7 @@ export const stations = pgTable('stations', {
     name: text('name').notNull(),
     address: text('address'),
     stationType: stationTypeEnum('station_type').default('OPERATIONAL'),
+    purchaseCredits: doublePrecision('purchase_credits').default(0).notNull(),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -217,6 +218,40 @@ export const officeUserStations = pgTable('office_user_stations', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
+// Purchase Requests
+export const purchaseRequests = pgTable('purchase_requests', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    stationId: uuid('station_id').notNull().references(() => stations.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').notNull().references(() => users.id),
+    fuelType: fuelTypeEnum('fuel_type').notNull(),
+    quantityLiters: doublePrecision('quantity_liters').notNull(),
+    paymentAmount: doublePrecision('payment_amount').notNull(),
+    requestedDeliveryDate: timestamp('requested_delivery_date').notNull(),
+    receiptUrl: text('receipt_url'),
+    status: text('status').notNull().default('PENDING'), // PENDING, APPROVED, REJECTED, RECEIVED
+    rejectionReason: text('rejection_reason'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id),
+    reviewedAt: timestamp('reviewed_at'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Purchase Orders
+export const purchaseOrders = pgTable('purchase_orders', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    purchaseRequestId: uuid('purchase_request_id').notNull().references(() => purchaseRequests.id, { onDelete: 'cascade' }),
+    poNumber: text('po_number').notNull().unique(),
+    expectedDeliveryDate: timestamp('expected_delivery_date').notNull(),
+    actualDeliveryDate: timestamp('actual_delivery_date'),
+    invoiceNumber: text('invoice_number'),
+    invoiceUrl: text('invoice_url'),
+    receivedBy: uuid('received_by').references(() => users.id),
+    receivedAt: timestamp('received_at'),
+    createdBy: uuid('created_by').notNull().references(() => users.id),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // --- Relations ---
 
 export const stationsRelations = relations(stations, ({ one, many }) => ({
@@ -323,6 +358,19 @@ export const bankDepositItemsRelations = relations(bankDepositItems, ({ one }) =
 export const officeUserStationsRelations = relations(officeUserStations, ({ one }) => ({
     user: one(users, { fields: [officeUserStations.userId], references: [users.id] }),
     station: one(stations, { fields: [officeUserStations.stationId], references: [stations.id] }),
+}));
+
+export const purchaseRequestsRelations = relations(purchaseRequests, ({ one }) => ({
+    station: one(stations, { fields: [purchaseRequests.stationId], references: [stations.id] }),
+    creator: one(users, { fields: [purchaseRequests.createdBy], references: [users.id] }),
+    reviewer: one(users, { fields: [purchaseRequests.reviewedBy], references: [users.id] }),
+    purchaseOrder: one(purchaseOrders, { fields: [purchaseRequests.id], references: [purchaseOrders.purchaseRequestId] }),
+}));
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one }) => ({
+    purchaseRequest: one(purchaseRequests, { fields: [purchaseOrders.purchaseRequestId], references: [purchaseRequests.id] }),
+    creator: one(users, { fields: [purchaseOrders.createdBy], references: [users.id] }),
+    receiver: one(users, { fields: [purchaseOrders.receivedBy], references: [users.id] }),
 }));
 
 // Export type helpers if needed

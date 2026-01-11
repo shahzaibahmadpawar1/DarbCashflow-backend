@@ -84,3 +84,33 @@ export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction
 
   next();
 };
+
+// Middleware to require Station Manager role
+export const requireSM = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  if (req.user.role !== 'SM') {
+    res.status(403).json({ error: 'Forbidden - Station Manager access required' });
+    return;
+  }
+
+  next();
+};
+
+// Middleware to require Office User role
+export const requireOU = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  if (req.user.role !== 'OU') {
+    res.status(403).json({ error: 'Forbidden - Office User access required' });
+    return;
+  }
+
+  next();
+};

@@ -12,6 +12,8 @@ import uploadRoutes from './routes/upload.routes';
 import officeUserRoutes from './routes/officeUser.routes';
 import nozzleRoutes from './routes/nozzle.routes';
 import fuelInventoryRoutes from './routes/fuelInventory.routes';
+import purchaseRequestRoutes from './routes/purchaseRequest.routes';
+import purchaseOrderRoutes from './routes/purchaseOrder.routes';
 
 dotenv.config();
 
@@ -50,6 +52,8 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/office-users', officeUserRoutes);
 app.use('/api/nozzles', nozzleRoutes);
 app.use('/api/fuel-inventory', fuelInventoryRoutes);
+app.use('/api/purchase-requests', purchaseRequestRoutes);
+app.use('/api/purchase-orders', purchaseOrderRoutes);
 
 
 // Health check
