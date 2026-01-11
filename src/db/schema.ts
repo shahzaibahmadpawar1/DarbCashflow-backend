@@ -277,7 +277,7 @@ export const nozzleReadingsRelations = relations(nozzleReadings, ({ one }) => ({
 export const cashTransactionsRelations = relations(cashTransactions, ({ one }) => ({
     station: one(stations, { fields: [cashTransactions.stationId], references: [stations.id] }),
     shift: one(shifts, { fields: [cashTransactions.shiftId], references: [shifts.id] }),
-    cashTransfer: one(cashTransfers),
+    cashTransfer: one(cashTransfers, { fields: [cashTransactions.id], references: [cashTransfers.cashTransactionId] }),
 }));
 
 export const cashTransfersRelations = relations(cashTransfers, ({ one }) => ({

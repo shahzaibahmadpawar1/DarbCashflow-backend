@@ -30,10 +30,11 @@ export const getTanksByStation = async (stationId: string) => {
 
 export const getCurrentShift = async (stationId: string) => {
   // Find current open shift (not locked)
+  // Include CLOSED shifts that are unlocked (when admin unlocks a LOCKED shift, it becomes CLOSED with locked: false)
   const shift = await db.query.shifts.findFirst({
     where: and(
       eq(shifts.stationId, stationId),
-      inArray(shifts.status, ['OPEN', 'SAVED']),
+      inArray(shifts.status, ['OPEN', 'SAVED', 'CLOSED']),
       eq(shifts.locked, false)
     ),
     with: {
