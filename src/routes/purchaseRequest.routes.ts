@@ -6,6 +6,7 @@ import {
     getPRDetails,
     approvePR,
     rejectPR,
+    verifyPRPayment,
 } from '../controllers/purchaseRequest.controller';
 import { authenticate, requireSM, requireOU } from '../middleware/auth.middleware';
 
@@ -28,5 +29,8 @@ router.put('/:id/approve', authenticate, requireOU, approvePR);
 
 // Reject purchase request (Office User)
 router.put('/:id/reject', authenticate, requireOU, rejectPR);
+
+// Verify payment for purchase request (Accountant)
+router.put('/:id/verify-payment', authenticate, verifyPRPayment);
 
 export default router;

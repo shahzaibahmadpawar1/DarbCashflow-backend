@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import db from '../config/database';
-import { stations } from '../db/schema';
+import { stations, creditTransactions } from '../db/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { getAccessibleStationIds } from '../services/officeUser.service';
 
@@ -195,3 +195,63 @@ export const deleteStation = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
+// Update station credit limit (Admin only)
+export const updateStationCreditLimit = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { totalCreditLimit, hasCreditFacility } = req.body;
+
+    // Check if user is admin
+    if (req.user?.role !== 'Admin') {
+      res.status(403).json({ error: 'Only admins can update credit limits' });
+      return;
+    }
+
+    if (totalCreditLimit === undefined || hasCreditFacility === undefined) {
+      res.status(400).json({ error: 'totalCreditLimit and hasCreditFacility are required' });
+      return;
+    }
+
+    const station = await db.query.stations.findFirst({
+      where: eq(stations.id, id),
+    });
+
+    if (!station) {
+      res.status(404).json({ error: 'Station not found' });
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      // Update station credit settings
+      await tx.update(stations)
+        .set({
+          totalCreditLimit,
+          hasCreditFacility,
+          purchaseCredits: totalCreditLimit - station.utilizedCredits, // Update available credits
+        })
+        .where(eq(stations.id, id));
+
+      // Create credit transaction record for allocation
+      if (totalCreditLimit !== station.totalCreditLimit) {
+        const difference = totalCreditLimit - station.totalCreditLimit;
+        await tx.insert(creditTransactions).values({
+          stationId: id,
+          type: 'ALLOCATION',
+          amount: Math.abs(difference),
+          description: difference > 0
+            ? `Credit limit increased from ${station.totalCreditLimit} to ${totalCreditLimit}`
+            : `Credit limit decreased from ${station.totalCreditLimit} to ${totalCreditLimit}`,
+          createdBy: req.user!.id,
+          verifiedBy: req.user!.id,
+          verifiedAt: new Date(),
+        });
+      }
+    });
+
+
+    res.json({ message: 'Credit limit updated successfully' });
+  } catch (error: any) {
+    console.error('Error updating credit limit:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};

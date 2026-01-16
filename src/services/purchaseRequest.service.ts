@@ -12,6 +12,23 @@ export const createPurchaseRequest = async (data: {
     requestedDeliveryDate: Date;
     receiptUrl?: string;
 }) => {
+    // Get station credit status
+    const station = await db.query.stations.findFirst({
+        where: eq(stations.id, data.stationId),
+    });
+
+    if (!station) {
+        throw new Error('Station not found');
+    }
+
+    const availableCredits = station.totalCreditLimit - station.utilizedCredits;
+    const usingCredits = station.hasCreditFacility && availableCredits >= data.paymentAmount;
+
+    // Check receipt requirement
+    if (!usingCredits && !data.receiptUrl) {
+        throw new Error('Receipt is required for stations without sufficient credits');
+    }
+
     const [pr] = await db.insert(purchaseRequests).values({
         stationId: data.stationId,
         createdBy: data.createdBy,
@@ -20,6 +37,7 @@ export const createPurchaseRequest = async (data: {
         paymentAmount: data.paymentAmount,
         requestedDeliveryDate: data.requestedDeliveryDate,
         receiptUrl: data.receiptUrl,
+        usingCredits,
         status: 'PENDING',
     }).returning();
 
@@ -137,12 +155,13 @@ export const getPurchaseRequestDetails = async (prId: string) => {
 
     return {
         ...pr,
-        creditsAfterApproval: pr.station.purchaseCredits - pr.paymentAmount,
-        hasInsufficientCredits: pr.station.purchaseCredits < pr.paymentAmount,
+        availableCredits: pr.station.totalCreditLimit - pr.station.utilizedCredits,
+        creditsAfterApproval: (pr.station.totalCreditLimit - pr.station.utilizedCredits) - (pr.usingCredits ? pr.paymentAmount : 0),
+        hasInsufficientCredits: !pr.usingCredits && pr.station.hasCreditFacility && (pr.station.totalCreditLimit - pr.station.utilizedCredits) < pr.paymentAmount,
     };
 };
 
-export const approvePurchaseRequest = async (prId: string, userId: string) => {
+export const approvePurchaseRequest = async (prId: string, userId: string, approvalComment?: string) => {
     return db.transaction(async (tx) => {
         // Get PR details
         const pr = await tx.query.purchaseRequests.findFirst({
@@ -160,17 +179,18 @@ export const approvePurchaseRequest = async (prId: string, userId: string) => {
             throw new Error('Purchase request is not pending');
         }
 
-        // Deduct credits from station
-        await tx.update(stations)
-            .set({
-                purchaseCredits: pr.station.purchaseCredits - pr.paymentAmount,
-            })
-            .where(eq(stations.id, pr.stationId));
+        // Check payment verification requirement
+        if (pr.receiptUrl && !pr.usingCredits && !pr.paymentVerified) {
+            throw new Error('Payment must be verified by accountant before approval');
+        }
+
+        // Note: Credits are NOT deducted here anymore - they will be deducted when PO is received
 
         // Update PR status
         const [updatedPr] = await tx.update(purchaseRequests)
             .set({
                 status: 'APPROVED',
+                approvalComment,
                 reviewedBy: userId,
                 reviewedAt: new Date(),
             })
@@ -181,7 +201,7 @@ export const approvePurchaseRequest = async (prId: string, userId: string) => {
     });
 };
 
-export const rejectPurchaseRequest = async (prId: string, userId: string, reason: string) => {
+export const rejectPurchaseRequest = async (prId: string, userId: string, rejectionComment: string) => {
     const pr = await db.query.purchaseRequests.findFirst({
         where: eq(purchaseRequests.id, prId),
     });
@@ -197,9 +217,40 @@ export const rejectPurchaseRequest = async (prId: string, userId: string, reason
     const [updatedPr] = await db.update(purchaseRequests)
         .set({
             status: 'REJECTED',
-            rejectionReason: reason,
+            rejectionComment,
+            rejectionReason: rejectionComment, // Keep for backward compatibility
             reviewedBy: userId,
             reviewedAt: new Date(),
+        })
+        .where(eq(purchaseRequests.id, prId))
+        .returning();
+
+    return updatedPr;
+};
+
+// Verify payment for a purchase request (Accountant only)
+export const verifyPurchaseRequestPayment = async (prId: string, userId: string) => {
+    const pr = await db.query.purchaseRequests.findFirst({
+        where: eq(purchaseRequests.id, prId),
+    });
+
+    if (!pr) {
+        throw new Error('Purchase request not found');
+    }
+
+    if (!pr.receiptUrl) {
+        throw new Error('No receipt attached to this purchase request');
+    }
+
+    if (pr.paymentVerified) {
+        throw new Error('Payment already verified');
+    }
+
+    const [updatedPr] = await db.update(purchaseRequests)
+        .set({
+            paymentVerified: true,
+            paymentVerifiedBy: userId,
+            paymentVerifiedAt: new Date(),
         })
         .where(eq(purchaseRequests.id, prId))
         .returning();

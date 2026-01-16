@@ -1,6 +1,6 @@
 import db from '../config/database';
-import { purchaseOrders, purchaseRequests } from '../db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { purchaseOrders, purchaseRequests, tankerDeliveries, tanks, stations, creditTransactions } from '../db/schema';
+import { eq, desc, and } from 'drizzle-orm';
 
 // Generate PO number (format: PO-YYYYMMDD-XXXX)
 const generatePONumber = async () => {
@@ -95,6 +95,7 @@ export const getPurchaseOrdersByStation = async (stationId: string) => {
                     employeeId: true,
                 }
             },
+            tankerDelivery: true,
         },
         orderBy: [desc(purchaseOrders.createdAt)],
     });
@@ -133,6 +134,7 @@ export const getPurchaseOrderDetails = async (poId: string) => {
                     employeeId: true,
                 }
             },
+            tankerDelivery: true,
         },
     });
 
@@ -153,11 +155,15 @@ export const markPurchaseOrderReceived = async (
     userId: string
 ) => {
     return db.transaction(async (tx) => {
-        // Get PO
+        // Get PO with full details
         const po = await tx.query.purchaseOrders.findFirst({
             where: eq(purchaseOrders.id, poId),
             with: {
-                purchaseRequest: true,
+                purchaseRequest: {
+                    with: {
+                        station: true,
+                    }
+                },
             },
         });
 
@@ -167,6 +173,67 @@ export const markPurchaseOrderReceived = async (
 
         if (po.receivedAt) {
             throw new Error('Purchase order already marked as received');
+        }
+
+        const pr = po.purchaseRequest;
+        const station = pr.station;
+
+        // Find the appropriate tank for this fuel type
+        const tank = await tx.query.tanks.findFirst({
+            where: and(
+                eq(tanks.stationId, station.id),
+                eq(tanks.fuelType, pr.fuelType)
+            ),
+        });
+
+        if (!tank) {
+            throw new Error(`No tank found for fuel type ${pr.fuelType} at this station`);
+        }
+
+        // Create tanker delivery record
+        const [delivery] = await tx.insert(tankerDeliveries).values({
+            tankId: tank.id,
+            litersDelivered: pr.quantityLiters,
+            deliveryDate: deliveryDetails.actualDeliveryDate,
+            deliveredBy: userId,
+            invoiceNumber: deliveryDetails.invoiceNumber,
+            purchaseOrderId: poId,
+            isManual: false, // This is PO-based, not manual
+            notes: `Auto-created from PO ${po.poNumber}`,
+        }).returning();
+
+        // Update tank inventory
+        const newLevel = (tank.currentLevel || 0) + pr.quantityLiters;
+        await tx.update(tanks)
+            .set({
+                currentLevel: newLevel,
+            })
+            .where(eq(tanks.id, tank.id));
+
+        // If using credits, deduct from station and create credit transaction
+        if (pr.usingCredits) {
+            const newUtilizedCredits = station.utilizedCredits + pr.paymentAmount;
+            const newAvailableCredits = station.totalCreditLimit - newUtilizedCredits;
+
+            await tx.update(stations)
+                .set({
+                    utilizedCredits: newUtilizedCredits,
+                    purchaseCredits: newAvailableCredits, // Update legacy field
+                })
+                .where(eq(stations.id, station.id));
+
+            // Create credit transaction record
+            await tx.insert(creditTransactions).values({
+                stationId: station.id,
+                type: 'UTILIZATION',
+                amount: pr.paymentAmount,
+                description: `Credit utilized for PO ${po.poNumber} - ${pr.quantityLiters}L of ${pr.fuelType}`,
+                createdBy: userId,
+                verifiedBy: userId,
+                verifiedAt: new Date(),
+                purchaseRequestId: pr.id,
+                purchaseOrderId: poId,
+            });
         }
 
         // Update PO
@@ -188,6 +255,16 @@ export const markPurchaseOrderReceived = async (
             })
             .where(eq(purchaseRequests.id, po.purchaseRequestId));
 
-        return updatedPO;
+        return {
+            purchaseOrder: updatedPO,
+            tankerDelivery: delivery,
+            tankUpdated: {
+                tankId: tank.id,
+                previousLevel: tank.currentLevel,
+                newLevel,
+                litersAdded: pr.quantityLiters,
+            },
+            creditsDeducted: pr.usingCredits ? pr.paymentAmount : 0,
+        };
     });
 };

@@ -2,12 +2,13 @@ import { pgTable, uuid, text, timestamp, doublePrecision, boolean, pgEnum, integ
 import { relations } from 'drizzle-orm';
 
 // --- Enums ---
-export const userRoleEnum = pgEnum('UserRole', ['SM', 'AM', 'Admin', 'OU']);
+export const userRoleEnum = pgEnum('UserRole', ['SM', 'AM', 'Admin', 'OU', 'Accountant', 'ViewOnly']);
 export const shiftTypeEnum = pgEnum('ShiftType', ['DAY', 'NIGHT']);
 export const shiftStatusEnum = pgEnum('ShiftStatus', ['OPEN', 'SAVED', 'CLOSED', 'LOCKED']);
 export const cashTransferStatusEnum = pgEnum('CashTransferStatus', ['PENDING_ACCEPTANCE', 'WITH_AM', 'DEPOSITED']);
 export const fuelTypeEnum = pgEnum('FuelType', ['91_GASOLINE', '95_GASOLINE', 'DIESEL']);
 export const stationTypeEnum = pgEnum('StationType', ['OPERATIONAL', 'RENTAL', 'FRANCHISE']);
+export const creditTransactionTypeEnum = pgEnum('CreditTransactionType', ['ALLOCATION', 'UTILIZATION', 'PAYMENT', 'ADJUSTMENT']);
 
 // --- Tables ---
 
@@ -16,7 +17,10 @@ export const stations = pgTable('stations', {
     name: text('name').notNull(),
     address: text('address'),
     stationType: stationTypeEnum('station_type').default('OPERATIONAL'),
-    purchaseCredits: doublePrecision('purchase_credits').default(0).notNull(),
+    purchaseCredits: doublePrecision('purchase_credits').default(0).notNull(), // Available credits (legacy - will be calculated)
+    totalCreditLimit: doublePrecision('total_credit_limit').default(0).notNull(), // Total allocated credit
+    utilizedCredits: doublePrecision('utilized_credits').default(0).notNull(), // Currently used credits
+    hasCreditFacility: boolean('has_credit_facility').default(false).notNull(), // Whether station has credit facility
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -122,7 +126,10 @@ export const tankerDeliveries = pgTable('tanker_deliveries', {
     litersDelivered: doublePrecision('liters_delivered').notNull(),
     deliveryDate: timestamp('delivery_date').notNull(),
     deliveredBy: uuid('delivered_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
-    aramcoTicket: text('aramco_ticket'),
+    aramcoTicket: text('aramco_ticket'), // DEPRECATED - kept for old records
+    invoiceNumber: text('invoice_number'), // NEW - from purchase order
+    purchaseOrderId: uuid('purchase_order_id').references(() => purchaseOrders.id), // Link to PO
+    isManual: boolean('is_manual').default(true), // Distinguish old manual entries from PO-based
     notes: text('notes'),
     receiptUrl: text('receipt_url'),
     isUnlocked: boolean('is_unlocked').default(false),
@@ -229,7 +236,13 @@ export const purchaseRequests = pgTable('purchase_requests', {
     requestedDeliveryDate: timestamp('requested_delivery_date').notNull(),
     receiptUrl: text('receipt_url'),
     status: text('status').notNull().default('PENDING'), // PENDING, APPROVED, REJECTED, RECEIVED
-    rejectionReason: text('rejection_reason'),
+    approvalComment: text('approval_comment'), // Comment when approving
+    rejectionComment: text('rejection_comment'), // Comment when rejecting
+    rejectionReason: text('rejection_reason'), // DEPRECATED - use rejectionComment
+    paymentVerified: boolean('payment_verified').default(false), // Accountant verification
+    paymentVerifiedBy: uuid('payment_verified_by').references(() => users.id),
+    paymentVerifiedAt: timestamp('payment_verified_at'),
+    usingCredits: boolean('using_credits').default(false), // Whether this PR uses station credits
     reviewedBy: uuid('reviewed_by').references(() => users.id),
     reviewedAt: timestamp('reviewed_at'),
     createdAt: timestamp('created_at').defaultNow(),
@@ -252,6 +265,23 @@ export const purchaseOrders = pgTable('purchase_orders', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// Credit Transactions
+export const creditTransactions = pgTable('credit_transactions', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    stationId: uuid('station_id').notNull().references(() => stations.id, { onDelete: 'cascade' }),
+    type: creditTransactionTypeEnum('type').notNull(), // ALLOCATION, UTILIZATION, PAYMENT, ADJUSTMENT
+    amount: doublePrecision('amount').notNull(),
+    description: text('description'),
+    receiptUrl: text('receipt_url'), // For payments
+    verifiedBy: uuid('verified_by').references(() => users.id), // Accountant who verified
+    verifiedAt: timestamp('verified_at'),
+    createdBy: uuid('created_by').notNull().references(() => users.id),
+    createdAt: timestamp('created_at').defaultNow(),
+    // Reference to related entities
+    purchaseRequestId: uuid('purchase_request_id').references(() => purchaseRequests.id),
+    purchaseOrderId: uuid('purchase_order_id').references(() => purchaseOrders.id),
+});
+
 // --- Relations ---
 
 export const stationsRelations = relations(stations, ({ one, many }) => ({
@@ -261,6 +291,7 @@ export const stationsRelations = relations(stations, ({ one, many }) => ({
     shifts: many(shifts),
     cashTransactions: many(cashTransactions),
     officeUserAssignments: many(officeUserStations), // Office Users assigned to this station
+    creditTransactions: many(creditTransactions), // Credit transaction history
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -324,6 +355,7 @@ export const cashTransfersRelations = relations(cashTransfers, ({ one }) => ({
 export const tankerDeliveriesRelations = relations(tankerDeliveries, ({ one }) => ({
     tank: one(tanks, { fields: [tankerDeliveries.tankId], references: [tanks.id] }),
     deliveredBy: one(users, { fields: [tankerDeliveries.deliveredBy], references: [users.id] }),
+    purchaseOrder: one(purchaseOrders, { fields: [tankerDeliveries.purchaseOrderId], references: [purchaseOrders.id] }),
 }));
 
 export const fuelPricesRelations = relations(fuelPrices, ({ one }) => ({
@@ -364,6 +396,7 @@ export const purchaseRequestsRelations = relations(purchaseRequests, ({ one }) =
     station: one(stations, { fields: [purchaseRequests.stationId], references: [stations.id] }),
     creator: one(users, { fields: [purchaseRequests.createdBy], references: [users.id] }),
     reviewer: one(users, { fields: [purchaseRequests.reviewedBy], references: [users.id] }),
+    paymentVerifier: one(users, { fields: [purchaseRequests.paymentVerifiedBy], references: [users.id] }),
     purchaseOrder: one(purchaseOrders, { fields: [purchaseRequests.id], references: [purchaseOrders.purchaseRequestId] }),
 }));
 
@@ -371,6 +404,15 @@ export const purchaseOrdersRelations = relations(purchaseOrders, ({ one }) => ({
     purchaseRequest: one(purchaseRequests, { fields: [purchaseOrders.purchaseRequestId], references: [purchaseRequests.id] }),
     creator: one(users, { fields: [purchaseOrders.createdBy], references: [users.id] }),
     receiver: one(users, { fields: [purchaseOrders.receivedBy], references: [users.id] }),
+    tankerDelivery: one(tankerDeliveries, { fields: [purchaseOrders.id], references: [tankerDeliveries.purchaseOrderId] }),
+}));
+
+export const creditTransactionsRelations = relations(creditTransactions, ({ one }) => ({
+    station: one(stations, { fields: [creditTransactions.stationId], references: [stations.id] }),
+    creator: one(users, { fields: [creditTransactions.createdBy], references: [users.id] }),
+    verifier: one(users, { fields: [creditTransactions.verifiedBy], references: [users.id] }),
+    purchaseRequest: one(purchaseRequests, { fields: [creditTransactions.purchaseRequestId], references: [purchaseRequests.id] }),
+    purchaseOrder: one(purchaseOrders, { fields: [creditTransactions.purchaseOrderId], references: [purchaseOrders.id] }),
 }));
 
 // Export type helpers if needed

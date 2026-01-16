@@ -14,6 +14,7 @@ import nozzleRoutes from './routes/nozzle.routes';
 import fuelInventoryRoutes from './routes/fuelInventory.routes';
 import purchaseRequestRoutes from './routes/purchaseRequest.routes';
 import purchaseOrderRoutes from './routes/purchaseOrder.routes';
+import creditTransactionsRoutes from './routes/creditTransactions.routes';
 
 dotenv.config();
 
@@ -54,6 +55,7 @@ app.use('/api/nozzles', nozzleRoutes);
 app.use('/api/fuel-inventory', fuelInventoryRoutes);
 app.use('/api/purchase-requests', purchaseRequestRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
+app.use('/api/credit-transactions', creditTransactionsRoutes);
 
 
 // Health check
