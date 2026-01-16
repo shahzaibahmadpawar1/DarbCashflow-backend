@@ -100,15 +100,16 @@ export const requireSM = (req: AuthRequest, res: Response, next: NextFunction): 
   next();
 };
 
-// Middleware to require Office User role
+// Middleware to require Office User role (or Admin/Accountant)
 export const requireOU = (req: AuthRequest, res: Response, next: NextFunction): void => {
   if (!req.user) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
 
-  if (req.user.role !== 'OU') {
-    res.status(403).json({ error: 'Forbidden - Office User access required' });
+  // Allow Admin, OU, and Accountant to access office user endpoints
+  if (req.user.role !== 'OU' && req.user.role !== 'Admin' && req.user.role !== 'Accountant') {
+    res.status(403).json({ error: 'Forbidden - Office User, Admin, or Accountant access required' });
     return;
   }
 
