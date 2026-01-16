@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import db from '../config/database';
-import { users } from '../db/schema';
+import { users, fuelPrices, bankDeposits, purchaseOrders, purchaseRequests } from '../db/schema';
 import { eq, desc, and } from 'drizzle-orm';
 
 export const getUsers = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -154,17 +154,52 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
     try {
         const { id } = req.params;
 
-        const [deletedUser] = await db.delete(users)
-            .where(eq(users.id, id))
-            .returning();
+        // First check if user exists
+        const userToDelete = await db.query.users.findFirst({
+            where: eq(users.id, id),
+        });
 
-        if (!deletedUser) {
+        if (!userToDelete) {
             res.status(404).json({ error: 'User not found' });
             return;
         }
 
+        // Use a transaction to ensure all deletions succeed or none do
+        await db.transaction(async (tx) => {
+            // 1. Delete fuel prices created by this user
+            await tx.delete(fuelPrices)
+                .where(eq(fuelPrices.createdBy, id));
+
+            // 2. Delete bank deposits made by this user
+            await tx.delete(bankDeposits)
+                .where(eq(bankDeposits.depositedBy, id));
+
+            // 3. Delete purchase orders created or received by this user
+            await tx.delete(purchaseOrders)
+                .where(eq(purchaseOrders.createdBy, id));
+
+            await tx.delete(purchaseOrders)
+                .where(eq(purchaseOrders.receivedBy, id));
+
+            // 4. Delete purchase requests created or reviewed by this user
+            await tx.delete(purchaseRequests)
+                .where(eq(purchaseRequests.createdBy, id));
+
+            await tx.delete(purchaseRequests)
+                .where(eq(purchaseRequests.reviewedBy, id));
+
+            // 5. Finally, delete the user
+            // Tables with cascade delete will be handled automatically:
+            // - cashTransfers (fromUserId, toUserId)
+            // - tankerDeliveries (deliveredBy)
+            // - officeUserStations (userId)
+            await tx.delete(users)
+                .where(eq(users.id, id));
+        });
+
         res.json({ message: 'User deleted successfully' });
     } catch (error: any) {
+        console.error('Error deleting user:', error);
         res.status(500).json({ error: error.message || 'Internal server error' });
     }
 };
