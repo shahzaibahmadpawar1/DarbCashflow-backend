@@ -245,3 +245,26 @@ export const markPurchaseOrderReceived = async (
         };
     });
 };
+
+export const getDailyPurchaseOrders = async (date: string) => {
+    const targetDate = new Date(date);
+    const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+    const pos = await db.query.purchaseOrders.findMany({
+        where: (po, { and, gte, lte }) => and(
+            gte(po.createdAt, startOfDay),
+            lte(po.createdAt, endOfDay)
+        ),
+        with: {
+            purchaseRequest: {
+                with: {
+                    station: true,
+                },
+            },
+        },
+        orderBy: (po, { desc }) => [desc(po.createdAt)],
+    });
+
+    return pos;
+};
