@@ -81,11 +81,15 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
     }
 
     // Create station
+    const creditAmount = purchaseCredits || 0;
     const [station] = await db.insert(stations).values({
       name,
       address,
       stationType: stationType || 'OPERATIONAL',
-      purchaseCredits: purchaseCredits || 0,
+      purchaseCredits: creditAmount, // Legacy field
+      totalCreditLimit: creditAmount, // New credit system
+      utilizedCredits: 0, // Start with 0 utilized
+      hasCreditFacility: creditAmount > 0, // Set to true if credits provided
     }).returning();
 
     // If nozzle configuration is provided, create nozzles
@@ -137,6 +141,19 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
           });
         }
       }
+    }
+
+    // Create credit transaction record if credits were allocated
+    if (creditAmount > 0) {
+      await db.insert(creditTransactions).values({
+        stationId: station.id,
+        type: 'ALLOCATION',
+        amount: creditAmount,
+        description: `Initial credit allocation for new station`,
+        createdBy: req.user?.id || station.id,
+        verifiedBy: req.user?.id || station.id,
+        verifiedAt: new Date(),
+      });
     }
 
     res.status(201).json({ message: 'Station created successfully', station });
