@@ -13,6 +13,9 @@ const router = Router();
 // Create purchase order (Office User)
 router.post('/', authenticate, requireOU, createPO);
 
+// Get daily PO report (Office User) - MUST be before /:id route
+router.get('/daily-report', authenticate, getDailyPOReport);
+
 // Get purchase orders for a station (Station Manager)
 router.get('/station/:stationId', authenticate, getStationPOs);
 
@@ -21,8 +24,5 @@ router.get('/:id', authenticate, getPODetails);
 
 // Mark purchase order as received (Station Manager)
 router.put('/:id/receive', authenticate, requireSM, markPOReceived);
-
-// Get daily PO report (Office User)
-router.get('/daily-report', authenticate, requireOU, getDailyPOReport);
 
 export default router;
