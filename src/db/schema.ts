@@ -235,6 +235,8 @@ export const purchaseRequests = pgTable('purchase_requests', {
     paymentAmount: doublePrecision('payment_amount').notNull(),
     requestedDeliveryDate: timestamp('requested_delivery_date').notNull(),
     receiptUrl: text('receipt_url'),
+    bankDepositAmount: doublePrecision('bank_deposit_amount').default(0),
+    bankDepositReceiptUrl: text('bank_deposit_receipt_url'),
     status: text('status').notNull().default('PENDING'), // PENDING, APPROVED, REJECTED, RECEIVED
     approvalComment: text('approval_comment'), // Comment when approving
     rejectionComment: text('rejection_comment'), // Comment when rejecting
