@@ -3,10 +3,10 @@ import db from '../config/database';
 import { officeUserStations, users, stations } from '../db/schema';
 
 /**
- * Assign stations to an Office User
+ * Assign stations to an Office User, Accountant, or ViewOnly user
  */
 export const assignStationsToOfficeUser = async (userId: string, stationIds: string[]) => {
-    // Verify user is an Office User
+    // Verify user is an Office User, Accountant, or ViewOnly
     const user = await db.query.users.findFirst({
         where: eq(users.id, userId),
         columns: { id: true, role: true }
@@ -16,8 +16,8 @@ export const assignStationsToOfficeUser = async (userId: string, stationIds: str
         throw new Error('User not found');
     }
 
-    if (user.role !== 'OU') {
-        throw new Error('User is not an Office User');
+    if (user.role !== 'OU' && user.role !== 'Accountant' && user.role !== 'ViewOnly') {
+        throw new Error('User must be an Office User, Accountant, or ViewOnly user');
     }
 
     // Remove existing assignments
