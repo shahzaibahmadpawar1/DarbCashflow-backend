@@ -118,8 +118,8 @@ export const getAccessibleStationIds = async (userId: string): Promise<string[] 
     // Admin has access to all stations
     if (user.role === 'Admin') return 'all';
 
-    // Office User - return assigned stations
-    if (user.role === 'OU') {
+    // Office User, Accountant, ViewOnly - return assigned stations
+    if (user.role === 'OU' || user.role === 'Accountant' || user.role === 'ViewOnly') {
         const assignments = await db.query.officeUserStations.findMany({
             where: eq(officeUserStations.userId, userId),
             columns: { stationId: true }
