@@ -11,6 +11,8 @@ export const createPurchaseRequest = async (data: {
     paymentAmount: number;
     requestedDeliveryDate: Date;
     receiptUrl?: string;
+    bankDepositAmount?: number;
+    bankDepositReceiptUrl?: string;
 }) => {
     return db.transaction(async (tx) => {
         // Get station credit status
@@ -39,6 +41,8 @@ export const createPurchaseRequest = async (data: {
             paymentAmount: data.paymentAmount,
             requestedDeliveryDate: data.requestedDeliveryDate,
             receiptUrl: data.receiptUrl,
+            bankDepositAmount: data.bankDepositAmount || 0,
+            bankDepositReceiptUrl: data.bankDepositReceiptUrl,
             usingCredits,
             status: 'PENDING',
         }).returning();
@@ -62,6 +66,32 @@ export const createPurchaseRequest = async (data: {
                 amount: data.paymentAmount,
                 description: `Credit reserved for PR - ${data.quantityLiters}L of ${data.fuelType}`,
                 createdBy: data.createdBy,
+                purchaseRequestId: pr.id,
+            });
+        }
+
+        // If bank deposit is made, add to credits
+        if (data.bankDepositAmount && data.bankDepositAmount > 0) {
+            const newUtilizedCredits = Math.max(0, station.utilizedCredits - data.bankDepositAmount);
+            const newAvailableCredits = station.totalCreditLimit - newUtilizedCredits;
+
+            await tx.update(stations)
+                .set({
+                    utilizedCredits: newUtilizedCredits,
+                    purchaseCredits: newAvailableCredits,
+                })
+                .where(eq(stations.id, data.stationId));
+
+            // Create credit transaction record for deposit
+            await tx.insert(creditTransactions).values({
+                stationId: data.stationId,
+                type: 'PAYMENT',
+                amount: data.bankDepositAmount,
+                description: `Bank deposit with PR - ${data.quantityLiters}L of ${data.fuelType}`,
+                receiptUrl: data.bankDepositReceiptUrl,
+                createdBy: data.createdBy,
+                verifiedBy: data.createdBy,
+                verifiedAt: new Date(),
                 purchaseRequestId: pr.id,
             });
         }

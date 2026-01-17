@@ -11,7 +11,7 @@ import {
 
 export const createPR = async (req: Request, res: Response) => {
     try {
-        const { stationId, fuelType, quantityLiters, paymentAmount, requestedDeliveryDate, receiptUrl } = req.body;
+        const { stationId, fuelType, quantityLiters, paymentAmount, requestedDeliveryDate, receiptUrl, bankDepositAmount, bankDepositReceiptUrl } = req.body;
         const userId = (req as any).user.id;
 
         if (!stationId || !fuelType || !quantityLiters || !paymentAmount || !requestedDeliveryDate) {
@@ -26,6 +26,8 @@ export const createPR = async (req: Request, res: Response) => {
             paymentAmount: parseFloat(paymentAmount),
             requestedDeliveryDate: new Date(requestedDeliveryDate),
             receiptUrl,
+            bankDepositAmount: bankDepositAmount ? parseFloat(bankDepositAmount) : undefined,
+            bankDepositReceiptUrl,
         });
 
         res.json({ purchaseRequest: pr });
