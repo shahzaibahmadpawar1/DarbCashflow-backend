@@ -1,5 +1,5 @@
 import db from '../config/database';
-import { purchaseRequests, stations, users } from '../db/schema';
+import { purchaseRequests, stations, users, creditTransactions } from '../db/schema';
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { getAccessibleStationIds } from './officeUser.service';
 
@@ -12,36 +12,62 @@ export const createPurchaseRequest = async (data: {
     requestedDeliveryDate: Date;
     receiptUrl?: string;
 }) => {
-    // Get station credit status
-    const station = await db.query.stations.findFirst({
-        where: eq(stations.id, data.stationId),
+    return db.transaction(async (tx) => {
+        // Get station credit status
+        const station = await tx.query.stations.findFirst({
+            where: eq(stations.id, data.stationId),
+        });
+
+        if (!station) {
+            throw new Error('Station not found');
+        }
+
+        const availableCredits = station.totalCreditLimit - station.utilizedCredits;
+        const usingCredits = station.hasCreditFacility && availableCredits >= data.paymentAmount;
+
+        // Check receipt requirement
+        if (!usingCredits && !data.receiptUrl) {
+            throw new Error('Receipt is required for stations without sufficient credits');
+        }
+
+        // Create PR
+        const [pr] = await tx.insert(purchaseRequests).values({
+            stationId: data.stationId,
+            createdBy: data.createdBy,
+            fuelType: data.fuelType,
+            quantityLiters: data.quantityLiters,
+            paymentAmount: data.paymentAmount,
+            requestedDeliveryDate: data.requestedDeliveryDate,
+            receiptUrl: data.receiptUrl,
+            usingCredits,
+            status: 'PENDING',
+        }).returning();
+
+        // If using credits, deduct immediately and create transaction
+        if (usingCredits) {
+            const newUtilizedCredits = station.utilizedCredits + data.paymentAmount;
+            const newAvailableCredits = station.totalCreditLimit - newUtilizedCredits;
+
+            await tx.update(stations)
+                .set({
+                    utilizedCredits: newUtilizedCredits,
+                    purchaseCredits: newAvailableCredits, // Update legacy field
+                })
+                .where(eq(stations.id, data.stationId));
+
+            // Create credit transaction record
+            await tx.insert(creditTransactions).values({
+                stationId: data.stationId,
+                type: 'UTILIZATION',
+                amount: data.paymentAmount,
+                description: `Credit reserved for PR - ${data.quantityLiters}L of ${data.fuelType}`,
+                createdBy: data.createdBy,
+                purchaseRequestId: pr.id,
+            });
+        }
+
+        return pr;
     });
-
-    if (!station) {
-        throw new Error('Station not found');
-    }
-
-    const availableCredits = station.totalCreditLimit - station.utilizedCredits;
-    const usingCredits = station.hasCreditFacility && availableCredits >= data.paymentAmount;
-
-    // Check receipt requirement
-    if (!usingCredits && !data.receiptUrl) {
-        throw new Error('Receipt is required for stations without sufficient credits');
-    }
-
-    const [pr] = await db.insert(purchaseRequests).values({
-        stationId: data.stationId,
-        createdBy: data.createdBy,
-        fuelType: data.fuelType,
-        quantityLiters: data.quantityLiters,
-        paymentAmount: data.paymentAmount,
-        requestedDeliveryDate: data.requestedDeliveryDate,
-        receiptUrl: data.receiptUrl,
-        usingCredits,
-        status: 'PENDING',
-    }).returning();
-
-    return pr;
 };
 
 export const getPurchaseRequestsByStation = async (stationId: string) => {
@@ -202,30 +228,61 @@ export const approvePurchaseRequest = async (prId: string, userId: string, appro
 };
 
 export const rejectPurchaseRequest = async (prId: string, userId: string, rejectionComment: string) => {
-    const pr = await db.query.purchaseRequests.findFirst({
-        where: eq(purchaseRequests.id, prId),
+    return db.transaction(async (tx) => {
+        const pr = await tx.query.purchaseRequests.findFirst({
+            where: eq(purchaseRequests.id, prId),
+            with: {
+                station: true,
+            },
+        });
+
+        if (!pr) {
+            throw new Error('Purchase request not found');
+        }
+
+        if (pr.status !== 'PENDING') {
+            throw new Error('Purchase request is not pending');
+        }
+
+        // Update PR status
+        const [updatedPr] = await tx.update(purchaseRequests)
+            .set({
+                status: 'REJECTED',
+                rejectionComment,
+                rejectionReason: rejectionComment, // Keep for backward compatibility
+                reviewedBy: userId,
+                reviewedAt: new Date(),
+            })
+            .where(eq(purchaseRequests.id, prId))
+            .returning();
+
+        // If PR was using credits, refund them
+        if (pr.usingCredits) {
+            const newUtilizedCredits = pr.station.utilizedCredits - pr.paymentAmount;
+            const newAvailableCredits = pr.station.totalCreditLimit - newUtilizedCredits;
+
+            await tx.update(stations)
+                .set({
+                    utilizedCredits: newUtilizedCredits,
+                    purchaseCredits: newAvailableCredits, // Update legacy field
+                })
+                .where(eq(stations.id, pr.stationId));
+
+            // Create credit transaction record for refund
+            await tx.insert(creditTransactions).values({
+                stationId: pr.stationId,
+                type: 'ADJUSTMENT',
+                amount: pr.paymentAmount,
+                description: `Credit refunded - PR rejected: ${rejectionComment}`,
+                createdBy: userId,
+                verifiedBy: userId,
+                verifiedAt: new Date(),
+                purchaseRequestId: pr.id,
+            });
+        }
+
+        return updatedPr;
     });
-
-    if (!pr) {
-        throw new Error('Purchase request not found');
-    }
-
-    if (pr.status !== 'PENDING') {
-        throw new Error('Purchase request is not pending');
-    }
-
-    const [updatedPr] = await db.update(purchaseRequests)
-        .set({
-            status: 'REJECTED',
-            rejectionComment,
-            rejectionReason: rejectionComment, // Keep for backward compatibility
-            reviewedBy: userId,
-            reviewedAt: new Date(),
-        })
-        .where(eq(purchaseRequests.id, prId))
-        .returning();
-
-    return updatedPr;
 };
 
 // Verify payment for a purchase request (Accountant only)

@@ -210,31 +210,8 @@ export const markPurchaseOrderReceived = async (
             })
             .where(eq(tanks.id, tank.id));
 
-        // If using credits, deduct from station and create credit transaction
-        if (pr.usingCredits) {
-            const newUtilizedCredits = station.utilizedCredits + pr.paymentAmount;
-            const newAvailableCredits = station.totalCreditLimit - newUtilizedCredits;
-
-            await tx.update(stations)
-                .set({
-                    utilizedCredits: newUtilizedCredits,
-                    purchaseCredits: newAvailableCredits, // Update legacy field
-                })
-                .where(eq(stations.id, station.id));
-
-            // Create credit transaction record
-            await tx.insert(creditTransactions).values({
-                stationId: station.id,
-                type: 'UTILIZATION',
-                amount: pr.paymentAmount,
-                description: `Credit utilized for PO ${po.poNumber} - ${pr.quantityLiters}L of ${pr.fuelType}`,
-                createdBy: userId,
-                verifiedBy: userId,
-                verifiedAt: new Date(),
-                purchaseRequestId: pr.id,
-                purchaseOrderId: poId,
-            });
-        }
+        // Note: Credits were already deducted when PR was created
+        // No need to deduct again here
 
         // Update PO
         const [updatedPO] = await tx.update(purchaseOrders)
