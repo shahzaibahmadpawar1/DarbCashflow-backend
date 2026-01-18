@@ -47,19 +47,14 @@ export const createPurchaseRequest = async (data: {
             status: 'PENDING',
         }).returning();
 
-        // If using credits, deduct immediately and create transaction
+        // Calculate the final utilized credits after both operations
+        let finalUtilizedCredits = station.utilizedCredits;
+
+        // If using credits, add the PR amount to utilized credits
         if (usingCredits) {
-            const newUtilizedCredits = station.utilizedCredits + data.paymentAmount;
-            const newAvailableCredits = station.totalCreditLimit - newUtilizedCredits;
+            finalUtilizedCredits += data.paymentAmount;
 
-            await tx.update(stations)
-                .set({
-                    utilizedCredits: newUtilizedCredits,
-                    purchaseCredits: newAvailableCredits, // Update legacy field
-                })
-                .where(eq(stations.id, data.stationId));
-
-            // Create credit transaction record
+            // Create credit transaction record for utilization
             await tx.insert(creditTransactions).values({
                 stationId: data.stationId,
                 type: 'UTILIZATION',
@@ -70,17 +65,9 @@ export const createPurchaseRequest = async (data: {
             });
         }
 
-        // If bank deposit is made, add to credits
+        // If bank deposit is made, reduce utilized credits from the new total
         if (data.bankDepositAmount && data.bankDepositAmount > 0) {
-            const newUtilizedCredits = Math.max(0, station.utilizedCredits - data.bankDepositAmount);
-            const newAvailableCredits = station.totalCreditLimit - newUtilizedCredits;
-
-            await tx.update(stations)
-                .set({
-                    utilizedCredits: newUtilizedCredits,
-                    purchaseCredits: newAvailableCredits,
-                })
-                .where(eq(stations.id, data.stationId));
+            finalUtilizedCredits = Math.max(0, finalUtilizedCredits - data.bankDepositAmount);
 
             // Create credit transaction record for deposit
             await tx.insert(creditTransactions).values({
@@ -94,6 +81,18 @@ export const createPurchaseRequest = async (data: {
                 verifiedAt: new Date(),
                 purchaseRequestId: pr.id,
             });
+        }
+
+        // Update station credits once with the final calculated values
+        if (usingCredits || (data.bankDepositAmount && data.bankDepositAmount > 0)) {
+            const finalAvailableCredits = station.totalCreditLimit - finalUtilizedCredits;
+
+            await tx.update(stations)
+                .set({
+                    utilizedCredits: finalUtilizedCredits,
+                    purchaseCredits: finalAvailableCredits, // Update legacy field
+                })
+                .where(eq(stations.id, data.stationId));
         }
 
         return pr;
