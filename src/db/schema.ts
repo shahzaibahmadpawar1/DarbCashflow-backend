@@ -2,7 +2,7 @@ import { pgTable, uuid, text, timestamp, doublePrecision, boolean, pgEnum, integ
 import { relations } from 'drizzle-orm';
 
 // --- Enums ---
-export const userRoleEnum = pgEnum('UserRole', ['SM', 'AM', 'Admin', 'OU', 'Accountant', 'ViewOnly']);
+export const userRoleEnum = pgEnum('UserRole', ['SM', 'AM', 'Admin', 'OU', 'Accountant', 'ViewOnly', 'Procurement']);
 export const shiftTypeEnum = pgEnum('ShiftType', ['DAY', 'NIGHT']);
 export const shiftStatusEnum = pgEnum('ShiftStatus', ['OPEN', 'SAVED', 'CLOSED', 'LOCKED']);
 export const cashTransferStatusEnum = pgEnum('CashTransferStatus', ['PENDING_ACCEPTANCE', 'WITH_AM', 'DEPOSITED']);
