@@ -86,7 +86,13 @@ export const markPOReceived = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { actualDeliveryDate, invoiceNumber, invoiceUrl, receivedQuantityLiters, transporterId, actualTransportationCost } = req.body;
-        const userId = (req as any).user.id;
+        const user = (req as any).user;
+        const userId = user.id;
+
+        // Restriction: Only Station Managers and Admins can mark POs as received
+        if (user.role !== 'SM' && user.role !== 'Admin') {
+            return res.status(403).json({ error: 'Permission denied. Only Station Managers can mark purchase orders as received.' });
+        }
 
         if (!actualDeliveryDate || !invoiceNumber || !receivedQuantityLiters || actualTransportationCost === undefined) {
             return res.status(400).json({ error: 'Missing required fields: actualDeliveryDate, invoiceNumber, receivedQuantityLiters, actualTransportationCost' });
