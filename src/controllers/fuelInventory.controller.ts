@@ -33,7 +33,7 @@ export const getFuelTypeDetailedView = async (req: AuthRequest, res: Response): 
     try {
         const { fuelType } = req.params;
 
-        if (!['91_GASOLINE', '95_GASOLINE', 'DIESEL'].includes(fuelType)) {
+        if (!['91_GASOLINE', '95_GASOLINE', '98_GASOLINE', 'DIESEL'].includes(fuelType)) {
             res.status(400).json({ error: 'Invalid fuel type' });
             return;
         }

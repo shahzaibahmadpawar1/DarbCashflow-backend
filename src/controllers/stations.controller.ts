@@ -97,7 +97,7 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
       const { tanks, nozzles, fuelPrices } = await import('../db/schema');
 
       // Create tanks for each fuel type
-      const fuelTypes = ['91_GASOLINE', '95_GASOLINE', 'DIESEL'];
+      const fuelTypes = ['91_GASOLINE', '95_GASOLINE', '98_GASOLINE', 'DIESEL'];
       const tankMap = new Map<string, string>();
 
       for (const fuelType of fuelTypes) {

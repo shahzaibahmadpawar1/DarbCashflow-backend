@@ -14,6 +14,7 @@ export const setFuelPrice = async (data: {
         stationId: data.stationId,
         fuelType: data.fuelType as any,
         pricePerLiter: data.pricePerLiter,
+        effectiveFrom: new Date(),
         createdBy: data.createdBy,
     }).returning();
 };
@@ -59,7 +60,7 @@ export const initializeNozzleSales = async (shiftId: string, stationId: string) 
 
     // AUTO-INITIALIZE IF EMPTY: Create default tanks and nozzles
     if (stationNozzles.length === 0) {
-        const fuelTypes = ['91_GASOLINE', '95_GASOLINE', 'DIESEL'];
+        const fuelTypes = ['91_GASOLINE', '95_GASOLINE', '98_GASOLINE', 'DIESEL'];
 
         for (const fuelType of fuelTypes) {
             // Check if tank exists
@@ -82,7 +83,9 @@ export const initializeNozzleSales = async (shiftId: string, stationId: string) 
             }
 
             // Create default nozzles (2 for each fuel type)
-            const prefix = fuelType === '91_GASOLINE' ? '91' : (fuelType === '95_GASOLINE' ? '95' : 'D');
+            const prefix = fuelType === '91_GASOLINE' ? '91' :
+                fuelType === '95_GASOLINE' ? '95' :
+                    fuelType === '98_GASOLINE' ? '98' : 'D';
             const baseOrder = (fuelTypes.indexOf(fuelType) * 2) + 1;
 
             await db.insert(nozzles).values([

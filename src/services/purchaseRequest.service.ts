@@ -7,7 +7,7 @@ import { getBuyingRate } from './fuelBuyingRates.service';
 export const createPurchaseRequest = async (data: {
     stationId: string;
     createdBy: string;
-    fuelType: '91_GASOLINE' | '95_GASOLINE' | 'DIESEL';
+    fuelType: '91_GASOLINE' | '95_GASOLINE' | '98_GASOLINE' | 'DIESEL';
     quantityLiters: number;
     requestedDeliveryDate: Date;
     receiptUrl?: string;

@@ -1040,6 +1040,7 @@ export const getAdminStationStats = async (filters?: {
       const fuelBreakdown = fuelBreakdownByStation.filter(f => f.stationId === station.id);
       const gasoline91 = fuelBreakdown.find(f => f.fuelType === '91_GASOLINE');
       const gasoline95 = fuelBreakdown.find(f => f.fuelType === '95_GASOLINE');
+      const gasoline98 = fuelBreakdown.find(f => f.fuelType === '98_GASOLINE');
       const diesel = fuelBreakdown.find(f => f.fuelType === 'DIESEL');
 
       return {
@@ -1054,6 +1055,10 @@ export const getAdminStationStats = async (filters?: {
           gasoline95: {
             liters: Number(gasoline95?.totalLiters || 0),
             amount: Number(gasoline95?.totalAmount || 0),
+          },
+          gasoline98: {
+            liters: Number(gasoline98?.totalLiters || 0),
+            amount: Number(gasoline98?.totalAmount || 0),
           },
           diesel: {
             liters: Number(diesel?.totalLiters || 0),
@@ -1074,6 +1079,7 @@ export const getAdminStationStats = async (filters?: {
       fuelBreakdown: {
         gasoline91: { liters: 0, amount: 0 },
         gasoline95: { liters: 0, amount: 0 },
+        gasoline98: { liters: 0, amount: 0 },
         diesel: { liters: 0, amount: 0 },
       },
     }));

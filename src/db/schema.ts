@@ -6,7 +6,7 @@ export const userRoleEnum = pgEnum('UserRole', ['SM', 'AM', 'Admin', 'OU', 'Acco
 export const shiftTypeEnum = pgEnum('ShiftType', ['DAY', 'NIGHT']);
 export const shiftStatusEnum = pgEnum('ShiftStatus', ['OPEN', 'SAVED', 'CLOSED', 'LOCKED']);
 export const cashTransferStatusEnum = pgEnum('CashTransferStatus', ['PENDING_ACCEPTANCE', 'WITH_AM', 'DEPOSITED']);
-export const fuelTypeEnum = pgEnum('FuelType', ['91_GASOLINE', '95_GASOLINE', 'DIESEL']);
+export const fuelTypeEnum = pgEnum('FuelType', ['91_GASOLINE', '95_GASOLINE', '98_GASOLINE', 'DIESEL']);
 export const stationTypeEnum = pgEnum('StationType', ['OPERATIONAL', 'RENTAL', 'FRANCHISE']);
 export const creditTransactionTypeEnum = pgEnum('CreditTransactionType', ['ALLOCATION', 'UTILIZATION', 'PAYMENT', 'ADJUSTMENT']);
 

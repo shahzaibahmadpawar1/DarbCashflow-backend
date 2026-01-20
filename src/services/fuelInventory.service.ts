@@ -44,13 +44,18 @@ export const getFuelTankInventorySummary = async (dateFilter?: { type: 'single' 
     });
 
     // Group by fuel type
-    const summary = {
+    const summary: Record<string, any> = {
         '91_GASOLINE': {
             totalLiters: 0,
             deliveryCount: 0,
             stations: [] as any[]
         },
         '95_GASOLINE': {
+            totalLiters: 0,
+            deliveryCount: 0,
+            stations: [] as any[]
+        },
+        '98_GASOLINE': {
             totalLiters: 0,
             deliveryCount: 0,
             stations: [] as any[]
@@ -66,20 +71,22 @@ export const getFuelTankInventorySummary = async (dateFilter?: { type: 'single' 
     deliveries.forEach(delivery => {
         const fuelType = delivery.tank.fuelType;
 
-        summary[fuelType].totalLiters += Number(delivery.litersDelivered);
-        summary[fuelType].deliveryCount += 1;
+        if (summary[fuelType]) {
+            summary[fuelType].totalLiters += Number(delivery.litersDelivered);
+            summary[fuelType].deliveryCount += 1;
 
-        // Add to stations list
-        summary[fuelType].stations.push({
-            deliveryId: delivery.id,
-            stationId: delivery.tank.stationId,
-            stationName: delivery.tank.station.name,
-            litersDelivered: delivery.litersDelivered,
-            deliveryDate: delivery.deliveryDate,
-            aramcoTicket: delivery.aramcoTicket,
-            receiptUrl: delivery.receiptUrl,
-            notes: delivery.notes
-        });
+            // Add to stations list
+            summary[fuelType].stations.push({
+                deliveryId: delivery.id,
+                stationId: delivery.tank.stationId,
+                stationName: delivery.tank.station.name,
+                litersDelivered: delivery.litersDelivered,
+                deliveryDate: delivery.deliveryDate,
+                aramcoTicket: delivery.aramcoTicket,
+                receiptUrl: delivery.receiptUrl,
+                notes: delivery.notes
+            });
+        }
     });
 
     return {
@@ -89,7 +96,7 @@ export const getFuelTankInventorySummary = async (dateFilter?: { type: 'single' 
 };
 
 export const getFuelTypeDetails = async (
-    fuelType: '91_GASOLINE' | '95_GASOLINE' | 'DIESEL',
+    fuelType: '91_GASOLINE' | '95_GASOLINE' | '98_GASOLINE' | 'DIESEL',
     dateFilter?: { type: 'single' | 'range', date?: string, startDate?: string, endDate?: string }
 ) => {
     let whereClause: any = undefined;
