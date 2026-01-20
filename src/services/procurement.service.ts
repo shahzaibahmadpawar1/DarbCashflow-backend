@@ -1,12 +1,12 @@
 import db from '../config/database';
 import { purchaseOrders, purchaseRequests } from '../db/schema';
-import { eq, and, isNull, isNotNull } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, inArray } from 'drizzle-orm';
 
-// Get purchase orders pending procurement confirmation for a specific station
-export const getPendingProcurementPOs = async (stationId: string) => {
-    // First get all purchase requests for this station
+// Get purchase orders pending procurement confirmation for multiple stations
+export const getPendingProcurementPOs = async (stationIds: string[]) => {
+    // First get all purchase requests for these stations
     const prs = await db.query.purchaseRequests.findMany({
-        where: eq(purchaseRequests.stationId, stationId),
+        where: inArray(purchaseRequests.stationId, stationIds),
     });
 
     const prIds = prs.map(pr => pr.id);
@@ -32,10 +32,10 @@ export const getPendingProcurementPOs = async (stationId: string) => {
 };
 
 // Get all purchase orders for procurement user (for their assigned stations)
-export const getProcurementPOs = async (stationId: string) => {
-    // First get all purchase requests for this station
+export const getProcurementPOs = async (stationIds: string[]) => {
+    // First get all purchase requests for these stations
     const prs = await db.query.purchaseRequests.findMany({
-        where: eq(purchaseRequests.stationId, stationId),
+        where: inArray(purchaseRequests.stationId, stationIds),
     });
 
     const prIds = prs.map(pr => pr.id);
@@ -57,10 +57,10 @@ export const getProcurementPOs = async (stationId: string) => {
 };
 
 // Get confirmed POs (ready for station manager to receive)
-export const getConfirmedPOs = async (stationId: string) => {
-    // First get all purchase requests for this station
+export const getConfirmedPOs = async (stationIds: string[]) => {
+    // First get all purchase requests for these stations
     const prs = await db.query.purchaseRequests.findMany({
-        where: eq(purchaseRequests.stationId, stationId),
+        where: inArray(purchaseRequests.stationId, stationIds),
     });
 
     const prIds = prs.map(pr => pr.id);

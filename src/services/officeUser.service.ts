@@ -16,8 +16,8 @@ export const assignStationsToOfficeUser = async (userId: string, stationIds: str
         throw new Error('User not found');
     }
 
-    if (user.role !== 'OU' && user.role !== 'Accountant' && user.role !== 'ViewOnly') {
-        throw new Error('User must be an Office User, Accountant, or ViewOnly user');
+    if (user.role !== 'OU' && user.role !== 'Accountant' && user.role !== 'ViewOnly' && user.role !== 'Procurement') {
+        throw new Error('User must be an Office User, Accountant, ViewOnly, or Procurement user');
     }
 
     // Remove existing assignments
@@ -90,8 +90,8 @@ export const hasStationAccess = async (userId: string, stationId: string): Promi
     // SM and AM have access based on their stationId/area
     if (user.role === 'SM' || user.role === 'AM') return true;
 
-    // Office User - check assignments
-    if (user.role === 'OU') {
+    // Office User, Accountant, ViewOnly, Procurement - check assignments
+    if (user.role === 'OU' || user.role === 'Accountant' || user.role === 'ViewOnly' || user.role === 'Procurement') {
         const assignment = await db.query.officeUserStations.findFirst({
             where: and(
                 eq(officeUserStations.userId, userId),
@@ -118,8 +118,8 @@ export const getAccessibleStationIds = async (userId: string): Promise<string[] 
     // Admin has access to all stations
     if (user.role === 'Admin') return 'all';
 
-    // Office User, Accountant, ViewOnly - return assigned stations
-    if (user.role === 'OU' || user.role === 'Accountant' || user.role === 'ViewOnly') {
+    // Office User, Accountant, ViewOnly, Procurement - return assigned stations
+    if (user.role === 'OU' || user.role === 'Accountant' || user.role === 'ViewOnly' || user.role === 'Procurement') {
         const assignments = await db.query.officeUserStations.findMany({
             where: eq(officeUserStations.userId, userId),
             columns: { stationId: true }
