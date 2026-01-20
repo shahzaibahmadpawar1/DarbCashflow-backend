@@ -133,7 +133,11 @@ export const getPurchaseRequestsByStation = async (stationId: string) => {
                     employeeId: true,
                 }
             },
-            purchaseOrder: true,
+            purchaseOrder: {
+                with: {
+                    transporter: true,
+                }
+            },
         },
         orderBy: [desc(purchaseRequests.createdAt)],
     });
@@ -162,7 +166,11 @@ export const getPurchaseRequestsForOfficeUser = async (userId: string) => {
                         employeeId: true,
                     }
                 },
-                purchaseOrder: true,
+                purchaseOrder: {
+                    with: {
+                        transporter: true,
+                    }
+                },
             },
             orderBy: [desc(purchaseRequests.createdAt)],
         });
@@ -190,7 +198,11 @@ export const getPurchaseRequestsForOfficeUser = async (userId: string) => {
                     employeeId: true,
                 }
             },
-            purchaseOrder: true,
+            purchaseOrder: {
+                with: {
+                    transporter: true,
+                }
+            },
         },
         orderBy: [desc(purchaseRequests.createdAt)],
     });
@@ -215,7 +227,11 @@ export const getPurchaseRequestDetails = async (prId: string) => {
                     employeeId: true,
                 }
             },
-            purchaseOrder: true,
+            purchaseOrder: {
+                with: {
+                    transporter: true,
+                }
+            },
         },
     });
 

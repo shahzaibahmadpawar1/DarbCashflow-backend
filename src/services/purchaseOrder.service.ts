@@ -95,6 +95,7 @@ export const getPurchaseOrdersByStation = async (stationId: string) => {
                     employeeId: true,
                 }
             },
+            transporter: true,
             tankerDelivery: true,
         },
         orderBy: [desc(purchaseOrders.createdAt)],
@@ -134,6 +135,7 @@ export const getPurchaseOrderDetails = async (poId: string) => {
                     employeeId: true,
                 }
             },
+            transporter: true,
             tankerDelivery: true,
         },
     });
@@ -375,6 +377,7 @@ export const getDailyPurchaseOrders = async (date: string) => {
                     station: true,
                 },
             },
+            transporter: true,
         },
         orderBy: (po, { desc }) => [desc(po.createdAt)],
     });

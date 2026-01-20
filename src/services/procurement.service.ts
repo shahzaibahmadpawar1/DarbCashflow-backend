@@ -23,6 +23,7 @@ export const getPendingProcurementPOs = async (stationIds: string[]) => {
                     station: true,
                 },
             },
+            transporter: true,
         },
         orderBy: (purchaseOrders, { desc }) => [desc(purchaseOrders.createdAt)],
     });
@@ -48,6 +49,7 @@ export const getProcurementPOs = async (stationIds: string[]) => {
                     station: true,
                 },
             },
+            transporter: true,
         },
         orderBy: (purchaseOrders, { desc }) => [desc(purchaseOrders.createdAt)],
     });
@@ -77,6 +79,7 @@ export const getConfirmedPOs = async (stationIds: string[]) => {
                     station: true,
                 },
             },
+            transporter: true,
         },
         orderBy: (purchaseOrders, { desc }) => [desc(purchaseOrders.procurementConfirmedAt)],
     });
