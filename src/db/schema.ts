@@ -21,6 +21,7 @@ export const stations = pgTable('stations', {
     totalCreditLimit: doublePrecision('total_credit_limit').default(0).notNull(), // Total allocated credit
     utilizedCredits: doublePrecision('utilized_credits').default(0).notNull(), // Currently used credits
     hasCreditFacility: boolean('has_credit_facility').default(false).notNull(), // Whether station has credit facility
+    transportationCost: doublePrecision('transportation_cost').default(0).notNull(), // Fixed transportation cost per delivery
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -149,6 +150,28 @@ export const fuelPrices = pgTable('fuel_prices', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// Fuel Buying Rates (Admin-managed) - Purchase price from supplier
+export const fuelBuyingRates = pgTable('fuel_buying_rates', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    stationId: uuid('station_id').notNull().references(() => stations.id, { onDelete: 'cascade' }),
+    fuelType: fuelTypeEnum('fuel_type').notNull(),
+    buyingPricePerLiter: doublePrecision('buying_price_per_liter').notNull(),
+    effectiveFrom: timestamp('effective_from').notNull().defaultNow(),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Transporters
+export const transporters = pgTable('transporters', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull().unique(),
+    defaultCost: doublePrecision('default_cost').notNull(), // Default transportation cost
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // Nozzle Sales (Station Manager input)
 export const nozzleSales = pgTable('nozzle_sales', {
     id: uuid('id').defaultRandom().primaryKey(),
@@ -232,7 +255,10 @@ export const purchaseRequests = pgTable('purchase_requests', {
     createdBy: uuid('created_by').notNull().references(() => users.id),
     fuelType: fuelTypeEnum('fuel_type').notNull(),
     quantityLiters: doublePrecision('quantity_liters').notNull(),
-    paymentAmount: doublePrecision('payment_amount').notNull(),
+    buyingPricePerLiter: doublePrecision('buying_price_per_liter').notNull(), // Rate used for calculation
+    transportationCost: doublePrecision('transportation_cost').default(0).notNull(), // Transportation cost
+    totalAmount: doublePrecision('total_amount').notNull(), // quantity × buyingPrice + transportation
+    paymentAmount: doublePrecision('payment_amount').notNull(), // DEPRECATED - use totalAmount
     requestedDeliveryDate: timestamp('requested_delivery_date').notNull(),
     receiptUrl: text('receipt_url'),
     bankDepositAmount: doublePrecision('bank_deposit_amount').default(0),
@@ -260,6 +286,21 @@ export const purchaseOrders = pgTable('purchase_orders', {
     actualDeliveryDate: timestamp('actual_delivery_date'),
     invoiceNumber: text('invoice_number'),
     invoiceUrl: text('invoice_url'),
+
+    // Procurement Department Fields
+    procurementConfirmedBy: uuid('procurement_confirmed_by').references(() => users.id),
+    procurementConfirmedAt: timestamp('procurement_confirmed_at'),
+    aramcoPoNumber: text('aramco_po_number'), // Aramco PO reference
+    aramcoPoDate: timestamp('aramco_po_date'),
+    aramcoPoUrl: text('aramco_po_url'), // Attached Aramco PO document
+
+    // Receiving Fields
+    receivedQuantityLiters: doublePrecision('received_quantity_liters'), // Actual received quantity
+    receivedAmount: doublePrecision('received_amount'), // Calculated: receivedQty × buyingRate + transportation
+    transporterId: uuid('transporter_id').references(() => transporters.id),
+    actualTransportationCost: doublePrecision('actual_transportation_cost'), // Can be edited at receiving
+    creditVariance: doublePrecision('credit_variance'), // Difference: ordered amount - received amount
+
     receivedBy: uuid('received_by').references(() => users.id),
     receivedAt: timestamp('received_at'),
     createdBy: uuid('created_by').notNull().references(() => users.id),
@@ -365,6 +406,12 @@ export const fuelPricesRelations = relations(fuelPrices, ({ one }) => ({
     createdByUser: one(users, { fields: [fuelPrices.createdBy], references: [users.id] }),
 }));
 
+export const fuelBuyingRatesRelations = relations(fuelBuyingRates, ({ one }) => ({
+    station: one(stations, { fields: [fuelBuyingRates.stationId], references: [stations.id] }),
+    createdByUser: one(users, { fields: [fuelBuyingRates.createdBy], references: [users.id] }),
+}));
+
+
 export const nozzleSalesRelations = relations(nozzleSales, ({ one }) => ({
     shift: one(shifts, { fields: [nozzleSales.shiftId], references: [shifts.id] }),
     nozzle: one(nozzles, { fields: [nozzleSales.nozzleId], references: [nozzles.id] }),
@@ -406,6 +453,8 @@ export const purchaseOrdersRelations = relations(purchaseOrders, ({ one }) => ({
     purchaseRequest: one(purchaseRequests, { fields: [purchaseOrders.purchaseRequestId], references: [purchaseRequests.id] }),
     creator: one(users, { fields: [purchaseOrders.createdBy], references: [users.id] }),
     receiver: one(users, { fields: [purchaseOrders.receivedBy], references: [users.id] }),
+    procurementConfirmer: one(users, { fields: [purchaseOrders.procurementConfirmedBy], references: [users.id] }),
+    transporter: one(transporters, { fields: [purchaseOrders.transporterId], references: [transporters.id] }),
     tankerDelivery: one(tankerDeliveries, { fields: [purchaseOrders.id], references: [tankerDeliveries.purchaseOrderId] }),
 }));
 

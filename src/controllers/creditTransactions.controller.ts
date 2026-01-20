@@ -65,6 +65,31 @@ export const getCreditSummary = async (req: AuthRequest, res: Response): Promise
 
         const availableCredits = station.totalCreditLimit - station.utilizedCredits;
 
+        // Fetch recent transactions for this station
+        const transactions = await db.query.creditTransactions.findMany({
+            where: eq(creditTransactions.stationId, stationId),
+            orderBy: desc(creditTransactions.createdAt),
+            limit: 50, // Get last 50 transactions
+            with: {
+                creator: {
+                    columns: {
+                        id: true,
+                        name: true,
+                        employeeId: true,
+                    }
+                },
+                verifier: {
+                    columns: {
+                        id: true,
+                        name: true,
+                        employeeId: true,
+                    }
+                },
+                purchaseRequest: true,
+                purchaseOrder: true,
+            }
+        });
+
         res.json({
             station: {
                 id: station.id,
@@ -73,7 +98,8 @@ export const getCreditSummary = async (req: AuthRequest, res: Response): Promise
                 totalCreditLimit: station.totalCreditLimit,
                 utilizedCredits: station.utilizedCredits,
                 availableCredits: Math.max(0, availableCredits),
-            }
+            },
+            transactions: transactions || [], // Include transactions in the response
         });
     } catch (error: any) {
         console.error('Error fetching credit summary:', error);

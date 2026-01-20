@@ -3,6 +3,7 @@ import {
     createPO,
     getStationPOs,
     getPODetails,
+    confirmProcurementPO,
     markPOReceived,
     getDailyPOReport,
 } from '../controllers/purchaseOrder.controller';
@@ -21,6 +22,9 @@ router.get('/station/:stationId', authenticate, getStationPOs);
 
 // Get purchase order details
 router.get('/:id', authenticate, getPODetails);
+
+// Confirm procurement (Admin/OU/Procurement)
+router.put('/:id/confirm-procurement', authenticate, confirmProcurementPO);
 
 // Mark purchase order as received (Station Manager)
 router.put('/:id/receive', authenticate, requireSM, markPOReceived);

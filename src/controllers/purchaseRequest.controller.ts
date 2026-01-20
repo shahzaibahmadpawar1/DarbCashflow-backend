@@ -11,10 +11,10 @@ import {
 
 export const createPR = async (req: Request, res: Response) => {
     try {
-        const { stationId, fuelType, quantityLiters, paymentAmount, requestedDeliveryDate, receiptUrl, bankDepositAmount, bankDepositReceiptUrl } = req.body;
+        const { stationId, fuelType, quantityLiters, requestedDeliveryDate, receiptUrl, bankDepositAmount, bankDepositReceiptUrl } = req.body;
         const userId = (req as any).user.id;
 
-        if (!stationId || !fuelType || !quantityLiters || !paymentAmount || !requestedDeliveryDate) {
+        if (!stationId || !fuelType || !quantityLiters || !requestedDeliveryDate) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
@@ -23,7 +23,6 @@ export const createPR = async (req: Request, res: Response) => {
             createdBy: userId,
             fuelType,
             quantityLiters: parseFloat(quantityLiters),
-            paymentAmount: parseFloat(paymentAmount),
             requestedDeliveryDate: new Date(requestedDeliveryDate),
             receiptUrl,
             bankDepositAmount: bankDepositAmount ? parseFloat(bankDepositAmount) : undefined,

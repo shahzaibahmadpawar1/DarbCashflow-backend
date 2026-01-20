@@ -3,6 +3,7 @@ import {
     createPurchaseOrder,
     getPurchaseOrdersByStation,
     getPurchaseOrderDetails,
+    confirmProcurement,
     markPurchaseOrderReceived,
 } from '../services/purchaseOrder.service';
 
@@ -54,27 +55,60 @@ export const getPODetails = async (req: Request, res: Response) => {
     }
 };
 
+export const confirmProcurementPO = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { aramcoPoNumber, aramcoPoDate, aramcoPoUrl } = req.body;
+        const userId = (req as any).user.id;
+
+        if (!aramcoPoNumber || !aramcoPoDate) {
+            return res.status(400).json({ error: 'Aramco PO number and date are required' });
+        }
+
+        const po = await confirmProcurement(
+            id,
+            {
+                aramcoPoNumber,
+                aramcoPoDate: new Date(aramcoPoDate),
+                aramcoPoUrl,
+            },
+            userId
+        );
+
+        res.json({ message: 'Procurement confirmed successfully', purchaseOrder: po });
+    } catch (error: any) {
+        console.error('Error confirming procurement:', error);
+        res.status(500).json({ error: error.message || 'Failed to confirm procurement' });
+    }
+};
+
 export const markPOReceived = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { actualDeliveryDate, invoiceNumber, invoiceUrl } = req.body;
+        const { actualDeliveryDate, invoiceNumber, invoiceUrl, receivedQuantityLiters, transporterId, actualTransportationCost } = req.body;
         const userId = (req as any).user.id;
 
-        if (!actualDeliveryDate || !invoiceNumber) {
-            return res.status(400).json({ error: 'Missing required fields' });
+        if (!actualDeliveryDate || !invoiceNumber || !receivedQuantityLiters || actualTransportationCost === undefined) {
+            return res.status(400).json({ error: 'Missing required fields: actualDeliveryDate, invoiceNumber, receivedQuantityLiters, actualTransportationCost' });
         }
 
-        const po = await markPurchaseOrderReceived(
+        const result = await markPurchaseOrderReceived(
             id,
             {
                 actualDeliveryDate: new Date(actualDeliveryDate),
                 invoiceNumber,
                 invoiceUrl,
+                receivedQuantityLiters: parseFloat(receivedQuantityLiters),
+                transporterId,
+                actualTransportationCost: parseFloat(actualTransportationCost),
             },
             userId
         );
 
-        res.json({ purchaseOrder: po });
+        res.json({
+            message: 'Purchase order received successfully',
+            ...result
+        });
     } catch (error: any) {
         console.error('Error marking purchase order as received:', error);
         res.status(500).json({ error: error.message || 'Failed to mark purchase order as received' });

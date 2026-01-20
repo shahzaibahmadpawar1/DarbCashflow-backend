@@ -2,20 +2,20 @@ import db from '../config/database';
 import { purchaseRequests, stations, users, creditTransactions } from '../db/schema';
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { getAccessibleStationIds } from './officeUser.service';
+import { getBuyingRate } from './fuelBuyingRates.service';
 
 export const createPurchaseRequest = async (data: {
     stationId: string;
     createdBy: string;
     fuelType: '91_GASOLINE' | '95_GASOLINE' | 'DIESEL';
     quantityLiters: number;
-    paymentAmount: number;
     requestedDeliveryDate: Date;
     receiptUrl?: string;
     bankDepositAmount?: number;
     bankDepositReceiptUrl?: string;
 }) => {
     return db.transaction(async (tx) => {
-        // Get station credit status
+        // Get station details including transportation cost
         const station = await tx.query.stations.findFirst({
             where: eq(stations.id, data.stationId),
         });
@@ -24,21 +24,36 @@ export const createPurchaseRequest = async (data: {
             throw new Error('Station not found');
         }
 
+        // Get buying rate for this fuel type
+        const buyingRate = await getBuyingRate(data.stationId, data.fuelType);
+
+        if (!buyingRate) {
+            throw new Error(`Buying rate not set for ${data.fuelType} at this station. Please contact admin.`);
+        }
+
+        // Calculate total amount: (quantity × buying rate) + transportation cost
+        const fuelCost = data.quantityLiters * buyingRate.buyingPricePerLiter;
+        const transportationCost = station.transportationCost || 0;
+        const totalAmount = fuelCost + transportationCost;
+
         const availableCredits = station.totalCreditLimit - station.utilizedCredits;
-        const usingCredits = station.hasCreditFacility && availableCredits >= data.paymentAmount;
+        const usingCredits = station.hasCreditFacility && availableCredits >= totalAmount;
 
         // Check receipt requirement
         if (!usingCredits && !data.receiptUrl) {
             throw new Error('Receipt is required for stations without sufficient credits');
         }
 
-        // Create PR
+        // Create PR with calculated values
         const [pr] = await tx.insert(purchaseRequests).values({
             stationId: data.stationId,
             createdBy: data.createdBy,
             fuelType: data.fuelType,
             quantityLiters: data.quantityLiters,
-            paymentAmount: data.paymentAmount,
+            buyingPricePerLiter: buyingRate.buyingPricePerLiter,
+            transportationCost: transportationCost,
+            totalAmount: totalAmount,
+            paymentAmount: totalAmount, // Keep for backward compatibility
             requestedDeliveryDate: data.requestedDeliveryDate,
             receiptUrl: data.receiptUrl,
             bankDepositAmount: data.bankDepositAmount || 0,
@@ -52,14 +67,14 @@ export const createPurchaseRequest = async (data: {
 
         // If using credits, add the PR amount to utilized credits
         if (usingCredits) {
-            finalUtilizedCredits += data.paymentAmount;
+            finalUtilizedCredits += totalAmount;
 
             // Create credit transaction record for utilization
             await tx.insert(creditTransactions).values({
                 stationId: data.stationId,
                 type: 'UTILIZATION',
-                amount: data.paymentAmount,
-                description: `Credit reserved for PR - ${data.quantityLiters}L of ${data.fuelType}`,
+                amount: totalAmount,
+                description: `Credit reserved for PR - ${data.quantityLiters}L of ${data.fuelType} @ ${buyingRate.buyingPricePerLiter} SAR/L + ${transportationCost} SAR transport`,
                 createdBy: data.createdBy,
                 purchaseRequestId: pr.id,
             });

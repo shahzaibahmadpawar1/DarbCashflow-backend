@@ -145,12 +145,59 @@ export const getPurchaseOrderDetails = async (poId: string) => {
     return po;
 };
 
+// Confirm procurement (Procurement department)
+export const confirmProcurement = async (
+    poId: string,
+    procurementDetails: {
+        aramcoPoNumber: string;
+        aramcoPoDate: Date;
+        aramcoPoUrl?: string;
+    },
+    userId: string
+) => {
+    return db.transaction(async (tx) => {
+        const po = await tx.query.purchaseOrders.findFirst({
+            where: eq(purchaseOrders.id, poId),
+        });
+
+        if (!po) {
+            throw new Error('Purchase order not found');
+        }
+
+        if (po.procurementConfirmedAt) {
+            throw new Error('Purchase order already confirmed by procurement');
+        }
+
+        if (po.receivedAt) {
+            throw new Error('Purchase order already received');
+        }
+
+        // Update PO with procurement details
+        const [updatedPO] = await tx.update(purchaseOrders)
+            .set({
+                procurementConfirmedBy: userId,
+                procurementConfirmedAt: new Date(),
+                aramcoPoNumber: procurementDetails.aramcoPoNumber,
+                aramcoPoDate: procurementDetails.aramcoPoDate,
+                aramcoPoUrl: procurementDetails.aramcoPoUrl,
+            })
+            .where(eq(purchaseOrders.id, poId))
+            .returning();
+
+        return updatedPO;
+    });
+};
+
+
 export const markPurchaseOrderReceived = async (
     poId: string,
     deliveryDetails: {
         actualDeliveryDate: Date;
         invoiceNumber: string;
         invoiceUrl?: string;
+        receivedQuantityLiters: number; // Actual received quantity
+        transporterId?: string; // Selected transporter
+        actualTransportationCost: number; // Can be edited
     },
     userId: string
 ) => {
@@ -178,6 +225,15 @@ export const markPurchaseOrderReceived = async (
         const pr = po.purchaseRequest;
         const station = pr.station;
 
+        // Calculate received amount: receivedQty × buyingRate + actualTransportationCost
+        const receivedFuelCost = deliveryDetails.receivedQuantityLiters * pr.buyingPricePerLiter;
+        const receivedAmount = receivedFuelCost + deliveryDetails.actualTransportationCost;
+
+        // Calculate variance: ordered amount - received amount
+        // Positive = Credit to station (received less)
+        // Negative = Debit from station (received more)
+        const creditVariance = pr.totalAmount - receivedAmount;
+
         // Find the appropriate tank for this fuel type
         const tank = await tx.query.tanks.findFirst({
             where: and(
@@ -190,28 +246,75 @@ export const markPurchaseOrderReceived = async (
             throw new Error(`No tank found for fuel type ${pr.fuelType} at this station`);
         }
 
-        // Create tanker delivery record
+        // Create tanker delivery record with RECEIVED quantity
         const [delivery] = await tx.insert(tankerDeliveries).values({
             tankId: tank.id,
-            litersDelivered: pr.quantityLiters,
+            litersDelivered: deliveryDetails.receivedQuantityLiters,
             deliveryDate: deliveryDetails.actualDeliveryDate,
             deliveredBy: userId,
             invoiceNumber: deliveryDetails.invoiceNumber,
             purchaseOrderId: poId,
             isManual: false, // This is PO-based, not manual
-            notes: `Auto-created from PO ${po.poNumber}`,
+            notes: `Auto-created from PO ${po.poNumber}. Ordered: ${pr.quantityLiters}L, Received: ${deliveryDetails.receivedQuantityLiters}L`,
         }).returning();
 
-        // Update tank inventory
-        const newLevel = (tank.currentLevel || 0) + pr.quantityLiters;
+        // Update tank inventory with RECEIVED quantity
+        const newLevel = (tank.currentLevel || 0) + deliveryDetails.receivedQuantityLiters;
         await tx.update(tanks)
             .set({
                 currentLevel: newLevel,
             })
             .where(eq(tanks.id, tank.id));
 
-        // Note: Credits were already deducted when PR was created
-        // No need to deduct again here
+        // Handle credit variance
+        if (creditVariance !== 0) {
+            if (creditVariance > 0) {
+                // Station receives credit (received less than ordered)
+                const newUtilizedCredits = Math.max(0, station.utilizedCredits - creditVariance);
+
+                await tx.update(stations)
+                    .set({
+                        utilizedCredits: newUtilizedCredits,
+                        purchaseCredits: station.totalCreditLimit - newUtilizedCredits,
+                    })
+                    .where(eq(stations.id, station.id));
+
+                // Create credit transaction
+                await tx.insert(creditTransactions).values({
+                    stationId: station.id,
+                    type: 'PAYMENT',
+                    amount: creditVariance,
+                    description: `Credit from PO variance - Ordered: ${pr.quantityLiters}L @ ${pr.buyingPricePerLiter} + ${pr.transportationCost} = ${pr.totalAmount} SAR, Received: ${deliveryDetails.receivedQuantityLiters}L @ ${pr.buyingPricePerLiter} + ${deliveryDetails.actualTransportationCost} = ${receivedAmount} SAR`,
+                    createdBy: userId,
+                    verifiedBy: userId,
+                    verifiedAt: new Date(),
+                    purchaseOrderId: poId,
+                });
+            } else {
+                // Station is debited (received more than ordered)
+                const debitAmount = Math.abs(creditVariance);
+                const newUtilizedCredits = station.utilizedCredits + debitAmount;
+
+                await tx.update(stations)
+                    .set({
+                        utilizedCredits: newUtilizedCredits,
+                        purchaseCredits: station.totalCreditLimit - newUtilizedCredits,
+                    })
+                    .where(eq(stations.id, station.id));
+
+                // Create debit transaction
+                await tx.insert(creditTransactions).values({
+                    stationId: station.id,
+                    type: 'ADJUSTMENT',
+                    amount: debitAmount,
+                    description: `Debit from PO variance - Ordered: ${pr.quantityLiters}L @ ${pr.buyingPricePerLiter} + ${pr.transportationCost} = ${pr.totalAmount} SAR, Received: ${deliveryDetails.receivedQuantityLiters}L @ ${pr.buyingPricePerLiter} + ${deliveryDetails.actualTransportationCost} = ${receivedAmount} SAR`,
+                    createdBy: userId,
+                    verifiedBy: userId,
+                    verifiedAt: new Date(),
+                    purchaseOrderId: poId,
+                });
+            }
+        }
 
         // Update PO
         const [updatedPO] = await tx.update(purchaseOrders)
@@ -219,6 +322,11 @@ export const markPurchaseOrderReceived = async (
                 actualDeliveryDate: deliveryDetails.actualDeliveryDate,
                 invoiceNumber: deliveryDetails.invoiceNumber,
                 invoiceUrl: deliveryDetails.invoiceUrl,
+                receivedQuantityLiters: deliveryDetails.receivedQuantityLiters,
+                receivedAmount: receivedAmount,
+                transporterId: deliveryDetails.transporterId,
+                actualTransportationCost: deliveryDetails.actualTransportationCost,
+                creditVariance: creditVariance,
                 receivedBy: userId,
                 receivedAt: new Date(),
             })
@@ -239,9 +347,14 @@ export const markPurchaseOrderReceived = async (
                 tankId: tank.id,
                 previousLevel: tank.currentLevel,
                 newLevel,
-                litersAdded: pr.quantityLiters,
+                litersAdded: deliveryDetails.receivedQuantityLiters,
             },
-            creditsDeducted: pr.usingCredits ? pr.paymentAmount : 0,
+            variance: {
+                orderedAmount: pr.totalAmount,
+                receivedAmount: receivedAmount,
+                creditVariance: creditVariance,
+                varianceType: creditVariance > 0 ? 'CREDIT' : creditVariance < 0 ? 'DEBIT' : 'NONE',
+            },
         };
     });
 };
