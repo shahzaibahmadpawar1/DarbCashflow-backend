@@ -271,19 +271,12 @@ export const markPurchaseOrderReceived = async (
             .where(eq(tanks.id, tank.id));
 
         // Handle credit variance
+        // Note: Station credits will be automatically updated by database trigger
+        // We only need to create the transaction record
         if (creditVariance !== 0) {
             if (creditVariance > 0) {
                 // Station receives credit (received less than ordered)
-                const newUtilizedCredits = Math.max(0, station.utilizedCredits - creditVariance);
-
-                await tx.update(stations)
-                    .set({
-                        utilizedCredits: newUtilizedCredits,
-                        purchaseCredits: station.totalCreditLimit - newUtilizedCredits,
-                    })
-                    .where(eq(stations.id, station.id));
-
-                // Create credit transaction
+                // Create credit transaction - trigger will update station
                 await tx.insert(creditTransactions).values({
                     stationId: station.id,
                     type: 'PAYMENT',
@@ -297,16 +290,8 @@ export const markPurchaseOrderReceived = async (
             } else {
                 // Station is debited (received more than ordered)
                 const debitAmount = Math.abs(creditVariance);
-                const newUtilizedCredits = station.utilizedCredits + debitAmount;
 
-                await tx.update(stations)
-                    .set({
-                        utilizedCredits: newUtilizedCredits,
-                        purchaseCredits: station.totalCreditLimit - newUtilizedCredits,
-                    })
-                    .where(eq(stations.id, station.id));
-
-                // Create debit transaction
+                // Create debit transaction - trigger will update station
                 await tx.insert(creditTransactions).values({
                     stationId: station.id,
                     type: 'ADJUSTMENT',

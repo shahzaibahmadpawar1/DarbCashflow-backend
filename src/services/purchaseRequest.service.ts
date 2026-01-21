@@ -108,17 +108,9 @@ export const createPurchaseRequest = async (data: {
             });
         }
 
-        // Update station credits once with the final calculated values
-        if (usingCredits || (data.bankDepositAmount && data.bankDepositAmount > 0)) {
-            const finalAvailableCredits = station.totalCreditLimit - finalUtilizedCredits;
-
-            await tx.update(stations)
-                .set({
-                    utilizedCredits: finalUtilizedCredits,
-                    purchaseCredits: finalAvailableCredits, // Update legacy field
-                })
-                .where(eq(stations.id, data.stationId));
-        }
+        // Note: Station credits are now automatically synchronized by database trigger
+        // The trigger recalculates utilized_credits from credit_transactions table
+        // No manual update needed here
 
         return pr;
     });
@@ -330,23 +322,14 @@ export const rejectPurchaseRequest = async (prId: string, userId: string, reject
             .where(eq(purchaseRequests.id, prId))
             .returning();
 
-        // If PR was using credits, refund them
+        // If PR was using credits, create refund transaction
+        // Note: Station credits will be automatically updated by database trigger
         if (pr.usingCredits) {
-            const newUtilizedCredits = pr.station.utilizedCredits - pr.paymentAmount;
-            const newAvailableCredits = pr.station.totalCreditLimit - newUtilizedCredits;
-
-            await tx.update(stations)
-                .set({
-                    utilizedCredits: newUtilizedCredits,
-                    purchaseCredits: newAvailableCredits, // Update legacy field
-                })
-                .where(eq(stations.id, pr.stationId));
-
             // Create credit transaction record for refund
             await tx.insert(creditTransactions).values({
                 stationId: pr.stationId,
                 type: 'ADJUSTMENT',
-                amount: pr.paymentAmount,
+                amount: -pr.paymentAmount, // Negative to reduce utilized credits
                 description: `Credit refunded - PR rejected: ${rejectionComment}`,
                 createdBy: userId,
                 verifiedBy: userId,
