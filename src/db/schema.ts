@@ -256,6 +256,7 @@ export const purchaseRequests = pgTable('purchase_requests', {
     fuelType: fuelTypeEnum('fuel_type').notNull(),
     quantityLiters: doublePrecision('quantity_liters').notNull(),
     buyingPricePerLiter: doublePrecision('buying_price_per_liter').notNull(), // Rate used for calculation
+    transporterId: uuid('transporter_id').references(() => transporters.id), // Default transporter
     transportationCost: doublePrecision('transportation_cost').default(0).notNull(), // Transportation cost
     totalAmount: doublePrecision('total_amount').notNull(), // quantity × buyingPrice + transportation
     paymentAmount: doublePrecision('payment_amount').notNull(), // DEPRECATED - use totalAmount
@@ -446,6 +447,7 @@ export const purchaseRequestsRelations = relations(purchaseRequests, ({ one }) =
     creator: one(users, { fields: [purchaseRequests.createdBy], references: [users.id] }),
     reviewer: one(users, { fields: [purchaseRequests.reviewedBy], references: [users.id] }),
     paymentVerifier: one(users, { fields: [purchaseRequests.paymentVerifiedBy], references: [users.id] }),
+    transporter: one(transporters, { fields: [purchaseRequests.transporterId], references: [transporters.id] }),
     purchaseOrder: one(purchaseOrders, { fields: [purchaseRequests.id], references: [purchaseOrders.purchaseRequestId] }),
 }));
 

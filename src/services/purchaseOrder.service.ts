@@ -53,11 +53,13 @@ export const createPurchaseOrder = async (
         // Generate PO number
         const poNumber = await generatePONumber();
 
-        // Create PO
+        // Create PO with transporter from PR
         const [po] = await tx.insert(purchaseOrders).values({
             purchaseRequestId,
             poNumber,
             expectedDeliveryDate,
+            transporterId: pr.transporterId, // Copy from PR
+            actualTransportationCost: pr.transportationCost, // Set default from PR
             createdBy: userId,
         }).returning();
 

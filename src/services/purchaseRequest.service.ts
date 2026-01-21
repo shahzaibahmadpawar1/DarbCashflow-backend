@@ -1,5 +1,5 @@
 import db from '../config/database';
-import { purchaseRequests, stations, users, creditTransactions } from '../db/schema';
+import { purchaseRequests, stations, users, creditTransactions, transporters } from '../db/schema';
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { getAccessibleStationIds } from './officeUser.service';
 import { getBuyingRate } from './fuelBuyingRates.service';
@@ -15,7 +15,7 @@ export const createPurchaseRequest = async (data: {
     bankDepositReceiptUrl?: string;
 }) => {
     return db.transaction(async (tx) => {
-        // Get station details including transportation cost
+        // Get station details
         const station = await tx.query.stations.findFirst({
             where: eq(stations.id, data.stationId),
         });
@@ -31,9 +31,18 @@ export const createPurchaseRequest = async (data: {
             throw new Error(`Buying rate not set for ${data.fuelType} at this station. Please contact admin.`);
         }
 
-        // Calculate total amount: (quantity × buying rate) + transportation cost
+        // Get default transporter "Bin Salman"
+        const defaultTransporter = await tx.query.transporters.findFirst({
+            where: eq(transporters.name, 'Bin Salman'),
+        });
+
+        if (!defaultTransporter) {
+            throw new Error('Default transporter "Bin Salman" not found. Please contact admin.');
+        }
+
+        // Calculate total amount: (quantity × buying rate) + transporter's default cost
         const fuelCost = data.quantityLiters * buyingRate.buyingPricePerLiter;
-        const transportationCost = station.transportationCost || 0;
+        const transportationCost = defaultTransporter.defaultCost;
         const totalAmount = fuelCost + transportationCost;
 
         const availableCredits = station.totalCreditLimit - station.utilizedCredits;
@@ -44,13 +53,14 @@ export const createPurchaseRequest = async (data: {
             throw new Error('Receipt is required for stations without sufficient credits');
         }
 
-        // Create PR with calculated values
+        // Create PR with calculated values and default transporter
         const [pr] = await tx.insert(purchaseRequests).values({
             stationId: data.stationId,
             createdBy: data.createdBy,
             fuelType: data.fuelType,
             quantityLiters: data.quantityLiters,
             buyingPricePerLiter: buyingRate.buyingPricePerLiter,
+            transporterId: defaultTransporter.id,
             transportationCost: transportationCost,
             totalAmount: totalAmount,
             paymentAmount: totalAmount, // Keep for backward compatibility
@@ -74,7 +84,7 @@ export const createPurchaseRequest = async (data: {
                 stationId: data.stationId,
                 type: 'UTILIZATION',
                 amount: totalAmount,
-                description: `Credit reserved for PR - ${data.quantityLiters}L of ${data.fuelType} @ ${buyingRate.buyingPricePerLiter} SAR/L + ${transportationCost} SAR transport`,
+                description: `Credit reserved for PR - ${data.quantityLiters}L of ${data.fuelType} @ ${buyingRate.buyingPricePerLiter} SAR/L + ${transportationCost} SAR transport (${defaultTransporter.name})`,
                 createdBy: data.createdBy,
                 purchaseRequestId: pr.id,
             });
@@ -133,6 +143,7 @@ export const getPurchaseRequestsByStation = async (stationId: string) => {
                     employeeId: true,
                 }
             },
+            transporter: true,
             purchaseOrder: {
                 with: {
                     transporter: true,
@@ -166,6 +177,7 @@ export const getPurchaseRequestsForOfficeUser = async (userId: string) => {
                         employeeId: true,
                     }
                 },
+                transporter: true,
                 purchaseOrder: {
                     with: {
                         transporter: true,
@@ -198,6 +210,7 @@ export const getPurchaseRequestsForOfficeUser = async (userId: string) => {
                     employeeId: true,
                 }
             },
+            transporter: true,
             purchaseOrder: {
                 with: {
                     transporter: true,
@@ -227,6 +240,7 @@ export const getPurchaseRequestDetails = async (prId: string) => {
                     employeeId: true,
                 }
             },
+            transporter: true,
             purchaseOrder: {
                 with: {
                     transporter: true,
