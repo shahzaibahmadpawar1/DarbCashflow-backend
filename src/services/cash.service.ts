@@ -100,17 +100,20 @@ export const getCashTransactions = async (
     } else {
       whereClauses.push(eq(cashTransactions.id, '00000000-0000-0000-0000-000000000000'));
     }
-  } else if (userRole === 'OU') {
-    // Office User - filter by assigned stations
+  } else if (userRole === 'OU' || userRole === 'ViewOnly' || userRole === 'Accountant' || userRole === 'Procurement') {
+    // Office User, ViewOnly, Accountant, Procurement - filter by assigned stations
     const accessibleStations = await getAccessibleStationIds(userId);
 
     if (accessibleStations === 'all') {
-      // Should not happen for OU, but handle gracefully
+      // Admin fallback (shouldn't hit here due to early return for Admin, but just in case)
     } else if (accessibleStations.length > 0) {
       whereClauses.push(inArray(cashTransactions.stationId, accessibleStations));
     } else {
       whereClauses.push(eq(cashTransactions.id, '00000000-0000-0000-0000-000000000000'));
     }
+  } else if (userRole !== 'Admin') {
+    // Fallback: if not admin and not handled, show nothing
+    whereClauses.push(eq(cashTransactions.id, '00000000-0000-0000-0000-000000000000'));
   }
 
   // Date filtering

@@ -25,8 +25,8 @@ export const getStations = async (req: AuthRequest, res: Response): Promise<void
     } else if (req.user.role === 'Admin') {
       // Admin can see all stations
       result = await db.query.stations.findMany();
-    } else if (req.user.role === 'OU') {
-      // Office User - see only assigned stations
+    } else if (req.user.role === 'OU' || req.user.role === 'ViewOnly' || req.user.role === 'Accountant' || req.user.role === 'Procurement') {
+      // Office User, ViewOnly, Accountant, Procurement - see only assigned stations
       const accessibleStations = await getAccessibleStationIds(req.user.id);
 
       if (accessibleStations === 'all') {

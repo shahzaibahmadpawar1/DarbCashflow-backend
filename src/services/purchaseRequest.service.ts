@@ -139,6 +139,27 @@ export const getPurchaseRequestsByStation = async (stationId: string) => {
             purchaseOrder: {
                 with: {
                     transporter: true,
+                    creator: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    receiver: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    procurementConfirmer: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
                 }
             },
         },
@@ -173,6 +194,27 @@ export const getPurchaseRequestsForOfficeUser = async (userId: string) => {
                 purchaseOrder: {
                     with: {
                         transporter: true,
+                        creator: {
+                            columns: {
+                                id: true,
+                                name: true,
+                                employeeId: true,
+                            }
+                        },
+                        receiver: {
+                            columns: {
+                                id: true,
+                                name: true,
+                                employeeId: true,
+                            }
+                        },
+                        procurementConfirmer: {
+                            columns: {
+                                id: true,
+                                name: true,
+                                employeeId: true,
+                            }
+                        },
                     }
                 },
             },
@@ -206,6 +248,27 @@ export const getPurchaseRequestsForOfficeUser = async (userId: string) => {
             purchaseOrder: {
                 with: {
                     transporter: true,
+                    creator: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    receiver: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    procurementConfirmer: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
                 }
             },
         },

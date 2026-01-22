@@ -107,9 +107,9 @@ export const requireOU = (req: AuthRequest, res: Response, next: NextFunction): 
     return;
   }
 
-  // Allow Admin, OU, and Accountant to access office user endpoints
-  if (req.user.role !== 'OU' && req.user.role !== 'Admin' && req.user.role !== 'Accountant') {
-    res.status(403).json({ error: 'Forbidden - Office User, Admin, or Accountant access required' });
+  // Allow Admin, OU, Accountant, and ViewOnly to access office user endpoints
+  if (req.user.role !== 'OU' && req.user.role !== 'Admin' && req.user.role !== 'Accountant' && req.user.role !== 'ViewOnly') {
+    res.status(403).json({ error: 'Forbidden - Office User, Admin, Accountant, or ViewOnly access required' });
     return;
   }
 

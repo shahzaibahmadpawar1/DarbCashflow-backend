@@ -938,7 +938,7 @@ export const getAdminStationStats = async (filters?: {
   // Get stations based on user role
   let allStations: any[];
 
-  if (filters?.userRole === 'OU' && filters?.userId) {
+  if ((filters?.userRole === 'OU' || filters?.userRole === 'ViewOnly' || filters?.userRole === 'Accountant' || filters?.userRole === 'Procurement') && filters?.userId) {
     // Office User - only get assigned stations
     const { getAccessibleStationIds } = await import('../services/officeUser.service');
     const accessibleStationIds = await getAccessibleStationIds(filters.userId);
