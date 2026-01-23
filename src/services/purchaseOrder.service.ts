@@ -231,26 +231,48 @@ export const markPurchaseOrderReceived = async (
         const pr = po.purchaseRequest;
         const station = pr.station;
 
-        // CRITICAL: Fetch CURRENT buying rate at delivery time (not the locked PR rate)
+        // STEP 1: Fetch CURRENT buying rate at delivery time (not the locked PR rate)
         const currentBuyingRate = await getBuyingRate(station.id, pr.fuelType);
 
         if (!currentBuyingRate) {
             throw new Error(`Current buying rate not found for ${pr.fuelType} at this station`);
         }
 
-        // Calculate ACTUAL costs using CURRENT rate at delivery
-        const actualFuelCost = deliveryDetails.receivedQuantityLiters * currentBuyingRate.buyingPricePerLiter;
-        const actualTotal = actualFuelCost + deliveryDetails.actualTransportationCost;
+        // STEP 2: Calculate FINAL costs using CURRENT rate at delivery
+        const finalFuelCost = deliveryDetails.receivedQuantityLiters * currentBuyingRate.buyingPricePerLiter;
+        const finalTotal = finalFuelCost + deliveryDetails.actualTransportationCost;
 
-        // Calculate RESERVED amount (from PR - what was already charged)
-        const reservedTotal = pr.totalAmount;
+        // STEP 3: DELETE & REPLACE Strategy
+        // Delete the old ESTIMATED UTILIZATION transaction (linked to PR)
+        // IMPORTANT: Only delete UTILIZATION type, NOT PAYMENT (bank deposits must remain)
+        const deletedTransactions = await tx.delete(creditTransactions)
+            .where(
+                and(
+                    eq(creditTransactions.purchaseRequestId, pr.id),
+                    eq(creditTransactions.type, 'UTILIZATION')
+                )
+            )
+            .returning();
 
-        // Calculate VARIANCE (what needs to be adjusted)
-        // Positive variance = Station was overcharged (received less or rate decreased) → Refund
-        // Negative variance = Station was undercharged (received more or rate increased) → Charge more
-        const variance = reservedTotal - actualTotal;
+        if (deletedTransactions.length === 0) {
+            throw new Error('No UTILIZATION transaction found for this PR. Cannot proceed with receipt.');
+        }
 
-        // Find the appropriate tank for this fuel type
+        const deletedAmount = deletedTransactions[0].amount;
+
+        // STEP 4: Insert NEW FINAL UTILIZATION transaction (linked to PO)
+        await tx.insert(creditTransactions).values({
+            stationId: station.id,
+            type: 'UTILIZATION',
+            amount: finalTotal,
+            description: `FINAL fuel cost for PO ${po.poNumber} - ${deliveryDetails.receivedQuantityLiters}L of ${pr.fuelType} @ ${currentBuyingRate.buyingPricePerLiter} SAR/L + ${deliveryDetails.actualTransportationCost} SAR transport (Replaced estimated ${deletedAmount.toFixed(2)} SAR with actual ${finalTotal.toFixed(2)} SAR)`,
+            createdBy: userId,
+            verifiedBy: userId,
+            verifiedAt: new Date(),
+            purchaseOrderId: poId, // Link to PO, not PR
+        });
+
+        // STEP 5: Find the appropriate tank for this fuel type
         const tank = await tx.query.tanks.findFirst({
             where: and(
                 eq(tanks.stationId, station.id),
@@ -262,7 +284,7 @@ export const markPurchaseOrderReceived = async (
             throw new Error(`No tank found for fuel type ${pr.fuelType} at this station`);
         }
 
-        // Create tanker delivery record with RECEIVED quantity
+        // STEP 6: Create tanker delivery record with RECEIVED quantity
         const [delivery] = await tx.insert(tankerDeliveries).values({
             tankId: tank.id,
             litersDelivered: deliveryDetails.receivedQuantityLiters,
@@ -270,11 +292,11 @@ export const markPurchaseOrderReceived = async (
             deliveredBy: userId,
             invoiceNumber: deliveryDetails.invoiceNumber,
             purchaseOrderId: poId,
-            isManual: false, // This is PO-based, not manual
-            notes: `Auto-created from PO ${po.poNumber}. Ordered: ${pr.quantityLiters}L @ ${pr.buyingPricePerLiter} SAR/L, Received: ${deliveryDetails.receivedQuantityLiters}L @ ${currentBuyingRate.buyingPricePerLiter} SAR/L`,
+            isManual: false,
+            notes: `PO ${po.poNumber}: Ordered ${pr.quantityLiters}L @ ${pr.buyingPricePerLiter} SAR/L, Received ${deliveryDetails.receivedQuantityLiters}L @ ${currentBuyingRate.buyingPricePerLiter} SAR/L`,
         }).returning();
 
-        // Update tank inventory with RECEIVED quantity
+        // STEP 7: Update tank inventory with RECEIVED quantity
         const newLevel = (tank.currentLevel || 0) + deliveryDetails.receivedQuantityLiters;
         await tx.update(tanks)
             .set({
@@ -282,46 +304,16 @@ export const markPurchaseOrderReceived = async (
             })
             .where(eq(tanks.id, tank.id));
 
-        // RECONCILIATION: Handle variance between reserved and actual
-        if (Math.abs(variance) > 0.01) { // Only if variance is significant (> 1 cent)
-            if (variance > 0) {
-                // Station was OVERCHARGED → Create NEGATIVE ADJUSTMENT (refund/credit)
-                // This DECREASES utilization (like a payment)
-                await tx.insert(creditTransactions).values({
-                    stationId: station.id,
-                    type: 'ADJUSTMENT',
-                    amount: -variance, // NEGATIVE amount = refund
-                    description: `PO Receipt Reconciliation (Refund) - Reserved: ${reservedTotal.toFixed(2)} SAR (${pr.quantityLiters}L @ ${pr.buyingPricePerLiter}), Actual: ${actualTotal.toFixed(2)} SAR (${deliveryDetails.receivedQuantityLiters}L @ ${currentBuyingRate.buyingPricePerLiter})`,
-                    createdBy: userId,
-                    verifiedBy: userId,
-                    verifiedAt: new Date(),
-                    purchaseOrderId: poId,
-                });
-            } else {
-                // Station was UNDERCHARGED → Create POSITIVE ADJUSTMENT (charge more)
-                // This INCREASES utilization
-                const additionalCharge = Math.abs(variance);
-                await tx.insert(creditTransactions).values({
-                    stationId: station.id,
-                    type: 'ADJUSTMENT',
-                    amount: additionalCharge, // POSITIVE amount = additional charge
-                    description: `PO Receipt Reconciliation (Additional Charge) - Reserved: ${reservedTotal.toFixed(2)} SAR (${pr.quantityLiters}L @ ${pr.buyingPricePerLiter}), Actual: ${actualTotal.toFixed(2)} SAR (${deliveryDetails.receivedQuantityLiters}L @ ${currentBuyingRate.buyingPricePerLiter})`,
-                    createdBy: userId,
-                    verifiedBy: userId,
-                    verifiedAt: new Date(),
-                    purchaseOrderId: poId,
-                });
-            }
-        }
+        // STEP 8: Update PO with received details
+        const variance = deletedAmount - finalTotal; // Positive = saved money, Negative = cost more
 
-        // Update PO with received details
         const [updatedPO] = await tx.update(purchaseOrders)
             .set({
                 actualDeliveryDate: deliveryDetails.actualDeliveryDate,
                 invoiceNumber: deliveryDetails.invoiceNumber,
                 invoiceUrl: deliveryDetails.invoiceUrl,
                 receivedQuantityLiters: deliveryDetails.receivedQuantityLiters,
-                receivedAmount: actualTotal,
+                receivedAmount: finalTotal,
                 transporterId: deliveryDetails.transporterId || po.transporterId,
                 actualTransportationCost: deliveryDetails.actualTransportationCost,
                 creditVariance: variance,
@@ -331,20 +323,20 @@ export const markPurchaseOrderReceived = async (
             .where(eq(purchaseOrders.id, poId))
             .returning();
 
-        // Update PR status to RECEIVED
+        // STEP 9: Update PR status to RECEIVED
         await tx.update(purchaseRequests)
             .set({ status: 'RECEIVED' })
             .where(eq(purchaseRequests.id, pr.id));
 
-        // CRITICAL: Synchronize station credits after all transactions
+        // STEP 10: CRITICAL - Synchronize station credits after Delete & Replace
         await syncStationCredits(tx, station.id);
 
         return {
             purchaseOrder: updatedPO,
             delivery,
+            deletedEstimate: deletedAmount,
+            finalTotal,
             variance,
-            reservedTotal,
-            actualTotal,
         };
     });
 };

@@ -47,17 +47,19 @@ export const createPurchaseRequest = async (data: {
         const estimatedTotal = estimatedFuelCost + transportationCost;
 
         // STEP 1: Handle Bank Deposit FIRST (if provided)
-        // This creates a surplus for non-credit stations
+        // IMPORTANT: Do NOT link this to purchaseRequestId - it's a standalone payment
+        // This ensures it won't be deleted when we replace the UTILIZATION transaction
         if (data.bankDepositAmount && data.bankDepositAmount > 0) {
             await tx.insert(creditTransactions).values({
                 stationId: data.stationId,
                 type: 'PAYMENT',
                 amount: data.bankDepositAmount,
-                description: `Bank deposit for PR - ${data.quantityLiters}L of ${data.fuelType}`,
+                description: `Bank deposit for fuel order - ${data.quantityLiters}L of ${data.fuelType}`,
                 receiptUrl: data.bankDepositReceiptUrl,
                 createdBy: data.createdBy,
                 verifiedBy: data.createdBy,
                 verifiedAt: new Date(),
+                // NOTE: No purchaseRequestId - this is a standalone payment
             });
 
             // Sync credits after deposit
@@ -114,13 +116,14 @@ export const createPurchaseRequest = async (data: {
         }).returning();
 
         // STEP 5: Reserve Credits (Create UTILIZATION transaction)
+        // IMPORTANT: Link this to purchaseRequestId so we can DELETE it later and REPLACE with final amount
         await tx.insert(creditTransactions).values({
             stationId: data.stationId,
             type: 'UTILIZATION',
             amount: estimatedTotal,
-            description: `Credit reservation for PR #${pr.id.substring(0, 8)} - ${data.quantityLiters}L of ${data.fuelType} @ ${buyingRate.buyingPricePerLiter} SAR/L + ${transportationCost} SAR transport (${defaultTransporter.name})`,
+            description: `ESTIMATED fuel cost for PR #${pr.id.substring(0, 8)} - ${data.quantityLiters}L of ${data.fuelType} @ ${buyingRate.buyingPricePerLiter} SAR/L + ${transportationCost} SAR transport (${defaultTransporter.name}) [WILL BE REPLACED ON PO RECEIPT]`,
             createdBy: data.createdBy,
-            purchaseRequestId: pr.id,
+            purchaseRequestId: pr.id, // Link to PR for deletion later
         });
 
         // STEP 6: Synchronize Station Credits
@@ -348,9 +351,13 @@ export const approvePurchaseRequest = async (prId: string, userId: string, appro
             throw new Error('Purchase request is not pending');
         }
 
-        // Check payment verification requirement
-        if (pr.receiptUrl && !pr.usingCredits && !pr.paymentVerified) {
-            throw new Error('Payment must be verified by accountant before approval');
+        // MANDATORY: Check payment verification requirement for ANY PR with receipt
+        // If a receipt is attached, accountant MUST verify it before Office User can approve
+        if (pr.receiptUrl && !pr.paymentVerified) {
+            throw new Error(
+                'Payment verification required: This purchase request has an attached receipt. ' +
+                'An accountant must verify the payment before it can be approved.'
+            );
         }
 
         // Note: Credits are NOT deducted here anymore - they will be deducted when PO is received
@@ -399,20 +406,23 @@ export const rejectPurchaseRequest = async (prId: string, userId: string, reject
             .where(eq(purchaseRequests.id, prId))
             .returning();
 
-        // If PR was using credits, create refund transaction
-        // Note: Station credits will be automatically updated by database trigger
-        if (pr.usingCredits) {
-            // Create credit transaction record for refund
+        // If PR had reserved credits (UTILIZATION transaction), create refund
+        // This releases the reserved credits back to the station
+        if (pr.usingCredits || pr.totalAmount > 0) {
+            // Create NEGATIVE ADJUSTMENT to refund the reserved amount
             await tx.insert(creditTransactions).values({
                 stationId: pr.stationId,
                 type: 'ADJUSTMENT',
-                amount: -pr.paymentAmount, // Negative to reduce utilized credits
-                description: `Credit refunded - PR rejected: ${rejectionComment}`,
+                amount: -pr.totalAmount, // NEGATIVE to reduce utilization (refund)
+                description: `Credit refund - PR #${pr.id.substring(0, 8)} rejected: ${rejectionComment}`,
                 createdBy: userId,
                 verifiedBy: userId,
                 verifiedAt: new Date(),
                 purchaseRequestId: pr.id,
             });
+
+            // Synchronize station credits
+            await syncStationCredits(tx, pr.stationId);
         }
 
         return updatedPr;
