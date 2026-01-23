@@ -368,8 +368,10 @@ export const approvePurchaseRequest = async (prId: string, userId: string, appro
             .set({
                 status: 'APPROVED',
                 approvalComment,
-                reviewedBy: userId,
-                reviewedAt: new Date(),
+                approvedBy: userId,
+                approvedAt: new Date(),
+                reviewedBy: userId, // Keep for backward compatibility
+                reviewedAt: new Date(), // Keep for backward compatibility
             })
             .where(eq(purchaseRequests.id, prId))
             .returning();
@@ -401,8 +403,10 @@ export const rejectPurchaseRequest = async (prId: string, userId: string, reject
                 status: 'REJECTED',
                 rejectionComment,
                 rejectionReason: rejectionComment, // Keep for backward compatibility
-                reviewedBy: userId,
-                reviewedAt: new Date(),
+                rejectedBy: userId,
+                rejectedAt: new Date(),
+                reviewedBy: userId, // Keep for backward compatibility
+                reviewedAt: new Date(), // Keep for backward compatibility
             })
             .where(eq(purchaseRequests.id, prId))
             .returning();

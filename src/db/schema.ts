@@ -272,8 +272,12 @@ export const purchaseRequests = pgTable('purchase_requests', {
     paymentVerifiedBy: uuid('payment_verified_by').references(() => users.id),
     paymentVerifiedAt: timestamp('payment_verified_at'),
     usingCredits: boolean('using_credits').default(false), // Whether this PR uses station credits
-    reviewedBy: uuid('reviewed_by').references(() => users.id),
-    reviewedAt: timestamp('reviewed_at'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id), // DEPRECATED - use approvedBy or rejectedBy
+    reviewedAt: timestamp('reviewed_at'), // DEPRECATED - use approvedAt or rejectedAt
+    approvedBy: uuid('approved_by').references(() => users.id),
+    approvedAt: timestamp('approved_at'),
+    rejectedBy: uuid('rejected_by').references(() => users.id),
+    rejectedAt: timestamp('rejected_at'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
