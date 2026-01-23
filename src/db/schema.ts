@@ -450,6 +450,8 @@ export const purchaseRequestsRelations = relations(purchaseRequests, ({ one }) =
     station: one(stations, { fields: [purchaseRequests.stationId], references: [stations.id] }),
     creator: one(users, { fields: [purchaseRequests.createdBy], references: [users.id] }),
     reviewer: one(users, { fields: [purchaseRequests.reviewedBy], references: [users.id] }),
+    approver: one(users, { fields: [purchaseRequests.approvedBy], references: [users.id] }),
+    rejecter: one(users, { fields: [purchaseRequests.rejectedBy], references: [users.id] }),
     paymentVerifier: one(users, { fields: [purchaseRequests.paymentVerifiedBy], references: [users.id] }),
     transporter: one(transporters, { fields: [purchaseRequests.transporterId], references: [transporters.id] }),
     purchaseOrder: one(purchaseOrders, { fields: [purchaseRequests.id], references: [purchaseOrders.purchaseRequestId] }),

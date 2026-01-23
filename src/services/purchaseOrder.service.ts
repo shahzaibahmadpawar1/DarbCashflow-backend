@@ -129,6 +129,34 @@ export const getPurchaseOrderDetails = async (poId: string) => {
                             employeeId: true,
                         }
                     },
+                    paymentVerifier: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    approver: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    rejecter: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    reviewer: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
                 }
             },
             creator: {
@@ -139,6 +167,13 @@ export const getPurchaseOrderDetails = async (poId: string) => {
                 }
             },
             receiver: {
+                columns: {
+                    id: true,
+                    name: true,
+                    employeeId: true,
+                }
+            },
+            procurementConfirmer: {
                 columns: {
                     id: true,
                     name: true,

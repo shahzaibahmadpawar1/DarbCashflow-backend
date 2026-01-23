@@ -48,7 +48,20 @@ export const getPODetails = async (req: Request, res: Response) => {
 
         const po = await getPurchaseOrderDetails(id);
 
-        res.json({ purchaseOrder: po });
+        // Transform relation names to match frontend expectations
+        const transformedPO = {
+            ...po,
+            procurementConfirmedBy: po.procurementConfirmer,
+            purchaseRequest: {
+                ...po.purchaseRequest,
+                paymentVerifiedBy: po.purchaseRequest.paymentVerifier,
+                approvedBy: po.purchaseRequest.approver,
+                rejectedBy: po.purchaseRequest.rejecter,
+                reviewedBy: po.purchaseRequest.reviewer,
+            }
+        };
+
+        res.json({ purchaseOrder: transformedPO });
     } catch (error: any) {
         console.error('Error fetching purchase order details:', error);
         res.status(500).json({ error: error.message || 'Failed to fetch purchase order details' });
