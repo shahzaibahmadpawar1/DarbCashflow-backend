@@ -409,6 +409,7 @@ export const updateTankerDelivery = async (
     litersDelivered: number;
     deliveryDate: Date;
     aramcoTicket: string;
+    invoiceNumber: string;
     notes: string;
     receiptUrl: string;
   }>,

@@ -258,7 +258,7 @@ export const getStationDeliveries = async (req: AuthRequest, res: Response): Pro
 export const updateTankerDeliveryData = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { deliveryId } = req.params;
-    const { litersDelivered, deliveryDate, aramcoTicket, notes, receiptUrl } = req.body;
+    const { litersDelivered, deliveryDate, aramcoTicket, invoiceNumber, notes, receiptUrl } = req.body;
 
     if (!req.user) {
       res.status(401).json({ error: 'Unauthorized' });
@@ -271,6 +271,7 @@ export const updateTankerDeliveryData = async (req: AuthRequest, res: Response):
         litersDelivered: litersDelivered ? parseFloat(litersDelivered) : undefined,
         deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
         aramcoTicket,
+        invoiceNumber,
         notes,
         receiptUrl
       },
