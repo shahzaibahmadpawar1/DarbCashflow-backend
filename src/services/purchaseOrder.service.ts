@@ -43,6 +43,12 @@ export const createPurchaseOrder = async (
             throw new Error('Purchase request must be approved before creating PO');
         }
 
+        // MANDATORY: Extra safety check to ensure payment is verified if receipt is attached
+        const hasReceipt = !!(pr.receiptUrl || pr.bankDepositReceiptUrl);
+        if (hasReceipt && !pr.paymentVerified) {
+            throw new Error('Payment verification required before generating PO');
+        }
+
         // Check if PO already exists
         const existingPO = await tx.query.purchaseOrders.findFirst({
             where: eq(purchaseOrders.purchaseRequestId, purchaseRequestId),

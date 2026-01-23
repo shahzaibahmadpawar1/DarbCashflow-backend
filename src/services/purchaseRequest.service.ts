@@ -352,10 +352,11 @@ export const approvePurchaseRequest = async (prId: string, userId: string, appro
         }
 
         // MANDATORY: Check payment verification requirement for ANY PR with receipt
-        // If a receipt is attached, accountant MUST verify it before Office User can approve
-        if (pr.receiptUrl && !pr.paymentVerified) {
+        // If a receipt (main receipt or bank deposit) is attached, accountant MUST verify it before Office User can approve
+        const hasReceipt = !!(pr.receiptUrl || pr.bankDepositReceiptUrl);
+        if (hasReceipt && !pr.paymentVerified) {
             throw new Error(
-                'Payment verification required: This purchase request has an attached receipt. ' +
+                'Payment verification required: This purchase request has an attached receipt (or bank deposit). ' +
                 'An accountant must verify the payment before it can be approved.'
             );
         }
@@ -439,8 +440,8 @@ export const verifyPurchaseRequestPayment = async (prId: string, userId: string)
         throw new Error('Purchase request not found');
     }
 
-    if (!pr.receiptUrl) {
-        throw new Error('No receipt attached to this purchase request');
+    if (!pr.receiptUrl && !pr.bankDepositReceiptUrl) {
+        throw new Error('No receipt or bank deposit attached to this purchase request');
     }
 
     if (pr.paymentVerified) {
