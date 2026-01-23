@@ -3,6 +3,7 @@ import { purchaseRequests, stations, users, creditTransactions, transporters } f
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { getAccessibleStationIds } from './officeUser.service';
 import { getBuyingRate } from './fuelBuyingRates.service';
+import { syncStationCredits } from './creditTransactions.service';
 
 export const createPurchaseRequest = async (data: {
     stationId: string;
@@ -24,7 +25,7 @@ export const createPurchaseRequest = async (data: {
             throw new Error('Station not found');
         }
 
-        // Get buying rate for this fuel type
+        // Get buying rate for this fuel type (current rate at time of order)
         const buyingRate = await getBuyingRate(data.stationId, data.fuelType);
 
         if (!buyingRate) {
@@ -40,20 +41,60 @@ export const createPurchaseRequest = async (data: {
             throw new Error('Default transporter "Bin Salman" not found. Please contact admin.');
         }
 
-        // Calculate total amount: (quantity × buying rate) + transporter's default cost
-        const fuelCost = data.quantityLiters * buyingRate.buyingPricePerLiter;
+        // Calculate estimated total: (quantity × current buying rate) + transport
+        const estimatedFuelCost = data.quantityLiters * buyingRate.buyingPricePerLiter;
         const transportationCost = defaultTransporter.defaultCost;
-        const totalAmount = fuelCost + transportationCost;
+        const estimatedTotal = estimatedFuelCost + transportationCost;
 
-        const availableCredits = station.totalCreditLimit - station.utilizedCredits;
-        const usingCredits = station.hasCreditFacility && availableCredits >= totalAmount;
+        // STEP 1: Handle Bank Deposit FIRST (if provided)
+        // This creates a surplus for non-credit stations
+        if (data.bankDepositAmount && data.bankDepositAmount > 0) {
+            await tx.insert(creditTransactions).values({
+                stationId: data.stationId,
+                type: 'PAYMENT',
+                amount: data.bankDepositAmount,
+                description: `Bank deposit for PR - ${data.quantityLiters}L of ${data.fuelType}`,
+                receiptUrl: data.bankDepositReceiptUrl,
+                createdBy: data.createdBy,
+                verifiedBy: data.createdBy,
+                verifiedAt: new Date(),
+            });
 
-        // Check receipt requirement
+            // Sync credits after deposit
+            await syncStationCredits(tx, data.stationId);
+
+            // Refresh station data to get updated utilizedCredits
+            const updatedStation = await tx.query.stations.findFirst({
+                where: eq(stations.id, data.stationId),
+            });
+
+            if (updatedStation) {
+                station.utilizedCredits = updatedStation.utilizedCredits;
+            }
+        }
+
+        // STEP 2: Check Available Balance (Unified Wallet Logic)
+        // Available = Limit - Utilized
+        // For credit stations: Limit > 0, so positive balance means credit available
+        // For non-credit stations: Limit = 0, so must have negative Utilized (surplus from deposits)
+        const availableBalance = station.totalCreditLimit - station.utilizedCredits;
+
+        // Determine if using credits or cash
+        const usingCredits = availableBalance >= estimatedTotal;
+
+        // STEP 3: Validate Sufficient Funds
         if (!usingCredits && !data.receiptUrl) {
             throw new Error('Receipt is required for stations without sufficient credits');
         }
 
-        // Create PR with calculated values and default transporter
+        if (!usingCredits && availableBalance < estimatedTotal) {
+            throw new Error(
+                `Insufficient balance. Available: ${availableBalance.toFixed(2)} SAR, Required: ${estimatedTotal.toFixed(2)} SAR. ` +
+                `Please make a bank deposit of at least ${(estimatedTotal - availableBalance).toFixed(2)} SAR.`
+            );
+        }
+
+        // STEP 4: Create Purchase Request
         const [pr] = await tx.insert(purchaseRequests).values({
             stationId: data.stationId,
             createdBy: data.createdBy,
@@ -62,8 +103,8 @@ export const createPurchaseRequest = async (data: {
             buyingPricePerLiter: buyingRate.buyingPricePerLiter,
             transporterId: defaultTransporter.id,
             transportationCost: transportationCost,
-            totalAmount: totalAmount,
-            paymentAmount: totalAmount, // Keep for backward compatibility
+            totalAmount: estimatedTotal,
+            paymentAmount: estimatedTotal, // Keep for backward compatibility
             requestedDeliveryDate: data.requestedDeliveryDate,
             receiptUrl: data.receiptUrl,
             bankDepositAmount: data.bankDepositAmount || 0,
@@ -72,45 +113,18 @@ export const createPurchaseRequest = async (data: {
             status: 'PENDING',
         }).returning();
 
-        // Calculate the final utilized credits after both operations
-        let finalUtilizedCredits = station.utilizedCredits;
+        // STEP 5: Reserve Credits (Create UTILIZATION transaction)
+        await tx.insert(creditTransactions).values({
+            stationId: data.stationId,
+            type: 'UTILIZATION',
+            amount: estimatedTotal,
+            description: `Credit reservation for PR #${pr.id.substring(0, 8)} - ${data.quantityLiters}L of ${data.fuelType} @ ${buyingRate.buyingPricePerLiter} SAR/L + ${transportationCost} SAR transport (${defaultTransporter.name})`,
+            createdBy: data.createdBy,
+            purchaseRequestId: pr.id,
+        });
 
-        // If using credits, add the PR amount to utilized credits
-        if (usingCredits) {
-            finalUtilizedCredits += totalAmount;
-
-            // Create credit transaction record for utilization
-            await tx.insert(creditTransactions).values({
-                stationId: data.stationId,
-                type: 'UTILIZATION',
-                amount: totalAmount,
-                description: `Credit reserved for PR - ${data.quantityLiters}L of ${data.fuelType} @ ${buyingRate.buyingPricePerLiter} SAR/L + ${transportationCost} SAR transport (${defaultTransporter.name})`,
-                createdBy: data.createdBy,
-                purchaseRequestId: pr.id,
-            });
-        }
-
-        // If bank deposit is made, reduce utilized credits from the new total
-        if (data.bankDepositAmount && data.bankDepositAmount > 0) {
-            finalUtilizedCredits = Math.max(0, finalUtilizedCredits - data.bankDepositAmount);
-
-            // Create credit transaction record for deposit
-            await tx.insert(creditTransactions).values({
-                stationId: data.stationId,
-                type: 'PAYMENT',
-                amount: data.bankDepositAmount,
-                description: `Bank deposit with PR - ${data.quantityLiters}L of ${data.fuelType}`,
-                receiptUrl: data.bankDepositReceiptUrl,
-                createdBy: data.createdBy,
-                verifiedBy: data.createdBy,
-                verifiedAt: new Date(),
-                purchaseRequestId: pr.id,
-            });
-        }
-
-        // Note: Station credits are now automatically synchronized by database trigger
-        // The trigger recalculates utilized_credits from credit_transactions table
-        // No manual update needed here
+        // STEP 6: Synchronize Station Credits
+        await syncStationCredits(tx, data.stationId);
 
         return pr;
     });

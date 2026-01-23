@@ -1,6 +1,8 @@
 import db from '../config/database';
 import { purchaseOrders, purchaseRequests, tankerDeliveries, tanks, stations, creditTransactions } from '../db/schema';
 import { eq, desc, and } from 'drizzle-orm';
+import { getBuyingRate } from './fuelBuyingRates.service';
+import { syncStationCredits } from './creditTransactions.service';
 
 // Generate PO number (format: PO-YYYYMMDD-XXXX)
 const generatePONumber = async () => {
@@ -229,14 +231,24 @@ export const markPurchaseOrderReceived = async (
         const pr = po.purchaseRequest;
         const station = pr.station;
 
-        // Calculate received amount: receivedQty × buyingRate + actualTransportationCost
-        const receivedFuelCost = deliveryDetails.receivedQuantityLiters * pr.buyingPricePerLiter;
-        const receivedAmount = receivedFuelCost + deliveryDetails.actualTransportationCost;
+        // CRITICAL: Fetch CURRENT buying rate at delivery time (not the locked PR rate)
+        const currentBuyingRate = await getBuyingRate(station.id, pr.fuelType);
 
-        // Calculate variance: ordered amount - received amount
-        // Positive = Credit to station (received less)
-        // Negative = Debit from station (received more)
-        const creditVariance = pr.totalAmount - receivedAmount;
+        if (!currentBuyingRate) {
+            throw new Error(`Current buying rate not found for ${pr.fuelType} at this station`);
+        }
+
+        // Calculate ACTUAL costs using CURRENT rate at delivery
+        const actualFuelCost = deliveryDetails.receivedQuantityLiters * currentBuyingRate.buyingPricePerLiter;
+        const actualTotal = actualFuelCost + deliveryDetails.actualTransportationCost;
+
+        // Calculate RESERVED amount (from PR - what was already charged)
+        const reservedTotal = pr.totalAmount;
+
+        // Calculate VARIANCE (what needs to be adjusted)
+        // Positive variance = Station was overcharged (received less or rate decreased) → Refund
+        // Negative variance = Station was undercharged (received more or rate increased) → Charge more
+        const variance = reservedTotal - actualTotal;
 
         // Find the appropriate tank for this fuel type
         const tank = await tx.query.tanks.findFirst({
@@ -259,7 +271,7 @@ export const markPurchaseOrderReceived = async (
             invoiceNumber: deliveryDetails.invoiceNumber,
             purchaseOrderId: poId,
             isManual: false, // This is PO-based, not manual
-            notes: `Auto-created from PO ${po.poNumber}. Ordered: ${pr.quantityLiters}L, Received: ${deliveryDetails.receivedQuantityLiters}L`,
+            notes: `Auto-created from PO ${po.poNumber}. Ordered: ${pr.quantityLiters}L @ ${pr.buyingPricePerLiter} SAR/L, Received: ${deliveryDetails.receivedQuantityLiters}L @ ${currentBuyingRate.buyingPricePerLiter} SAR/L`,
         }).returning();
 
         // Update tank inventory with RECEIVED quantity
@@ -270,33 +282,30 @@ export const markPurchaseOrderReceived = async (
             })
             .where(eq(tanks.id, tank.id));
 
-        // Handle credit variance
-        // Note: Station credits will be automatically updated by database trigger
-        // We only need to create the transaction record
-        if (creditVariance !== 0) {
-            if (creditVariance > 0) {
-                // Station receives credit (received less than ordered)
-                // Create credit transaction - trigger will update station
+        // RECONCILIATION: Handle variance between reserved and actual
+        if (Math.abs(variance) > 0.01) { // Only if variance is significant (> 1 cent)
+            if (variance > 0) {
+                // Station was OVERCHARGED → Create NEGATIVE ADJUSTMENT (refund/credit)
+                // This DECREASES utilization (like a payment)
                 await tx.insert(creditTransactions).values({
                     stationId: station.id,
-                    type: 'PAYMENT',
-                    amount: creditVariance,
-                    description: `Credit from PO variance - Ordered: ${pr.quantityLiters}L @ ${pr.buyingPricePerLiter} + ${pr.transportationCost} = ${pr.totalAmount} SAR, Received: ${deliveryDetails.receivedQuantityLiters}L @ ${pr.buyingPricePerLiter} + ${deliveryDetails.actualTransportationCost} = ${receivedAmount} SAR`,
+                    type: 'ADJUSTMENT',
+                    amount: -variance, // NEGATIVE amount = refund
+                    description: `PO Receipt Reconciliation (Refund) - Reserved: ${reservedTotal.toFixed(2)} SAR (${pr.quantityLiters}L @ ${pr.buyingPricePerLiter}), Actual: ${actualTotal.toFixed(2)} SAR (${deliveryDetails.receivedQuantityLiters}L @ ${currentBuyingRate.buyingPricePerLiter})`,
                     createdBy: userId,
                     verifiedBy: userId,
                     verifiedAt: new Date(),
                     purchaseOrderId: poId,
                 });
             } else {
-                // Station is debited (received more than ordered)
-                const debitAmount = Math.abs(creditVariance);
-
-                // Create debit transaction - trigger will update station
+                // Station was UNDERCHARGED → Create POSITIVE ADJUSTMENT (charge more)
+                // This INCREASES utilization
+                const additionalCharge = Math.abs(variance);
                 await tx.insert(creditTransactions).values({
                     stationId: station.id,
                     type: 'ADJUSTMENT',
-                    amount: debitAmount,
-                    description: `Debit from PO variance - Ordered: ${pr.quantityLiters}L @ ${pr.buyingPricePerLiter} + ${pr.transportationCost} = ${pr.totalAmount} SAR, Received: ${deliveryDetails.receivedQuantityLiters}L @ ${pr.buyingPricePerLiter} + ${deliveryDetails.actualTransportationCost} = ${receivedAmount} SAR`,
+                    amount: additionalCharge, // POSITIVE amount = additional charge
+                    description: `PO Receipt Reconciliation (Additional Charge) - Reserved: ${reservedTotal.toFixed(2)} SAR (${pr.quantityLiters}L @ ${pr.buyingPricePerLiter}), Actual: ${actualTotal.toFixed(2)} SAR (${deliveryDetails.receivedQuantityLiters}L @ ${currentBuyingRate.buyingPricePerLiter})`,
                     createdBy: userId,
                     verifiedBy: userId,
                     verifiedAt: new Date(),
@@ -305,17 +314,17 @@ export const markPurchaseOrderReceived = async (
             }
         }
 
-        // Update PO
+        // Update PO with received details
         const [updatedPO] = await tx.update(purchaseOrders)
             .set({
                 actualDeliveryDate: deliveryDetails.actualDeliveryDate,
                 invoiceNumber: deliveryDetails.invoiceNumber,
                 invoiceUrl: deliveryDetails.invoiceUrl,
                 receivedQuantityLiters: deliveryDetails.receivedQuantityLiters,
-                receivedAmount: receivedAmount,
-                transporterId: deliveryDetails.transporterId,
+                receivedAmount: actualTotal,
+                transporterId: deliveryDetails.transporterId || po.transporterId,
                 actualTransportationCost: deliveryDetails.actualTransportationCost,
-                creditVariance: creditVariance,
+                creditVariance: variance,
                 receivedBy: userId,
                 receivedAt: new Date(),
             })
@@ -324,26 +333,18 @@ export const markPurchaseOrderReceived = async (
 
         // Update PR status to RECEIVED
         await tx.update(purchaseRequests)
-            .set({
-                status: 'RECEIVED',
-            })
-            .where(eq(purchaseRequests.id, po.purchaseRequestId));
+            .set({ status: 'RECEIVED' })
+            .where(eq(purchaseRequests.id, pr.id));
+
+        // CRITICAL: Synchronize station credits after all transactions
+        await syncStationCredits(tx, station.id);
 
         return {
             purchaseOrder: updatedPO,
-            tankerDelivery: delivery,
-            tankUpdated: {
-                tankId: tank.id,
-                previousLevel: tank.currentLevel,
-                newLevel,
-                litersAdded: deliveryDetails.receivedQuantityLiters,
-            },
-            variance: {
-                orderedAmount: pr.totalAmount,
-                receivedAmount: receivedAmount,
-                creditVariance: creditVariance,
-                varianceType: creditVariance > 0 ? 'CREDIT' : creditVariance < 0 ? 'DEBIT' : 'NONE',
-            },
+            delivery,
+            variance,
+            reservedTotal,
+            actualTotal,
         };
     });
 };
