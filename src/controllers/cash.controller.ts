@@ -170,7 +170,10 @@ export const getFloatingCashView = async (req: AuthRequest, res: Response): Prom
       };
     }
 
-    const floatingCash = await getFloatingCash(stationType, dateFilter);
+    const floatingCash = await getFloatingCash(stationType, dateFilter, {
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
     res.json(floatingCash);
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });
@@ -179,7 +182,10 @@ export const getFloatingCashView = async (req: AuthRequest, res: Response): Prom
 
 export const getAdminCashSummaryView = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const summary = await getAdminCashSummary();
+    const summary = await getAdminCashSummary({
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
     res.json(summary);
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Internal server error' });

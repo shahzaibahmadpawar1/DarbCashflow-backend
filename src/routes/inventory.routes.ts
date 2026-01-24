@@ -44,9 +44,9 @@ router.post('/shifts/:shiftId/readings', authenticate, authorize('SM'), createRe
 router.post('/shifts/:shiftId/lock', authenticate, authorize('SM'), lockShiftData);
 router.post('/shifts/:shiftId/unlock', authenticate, authorize('Admin'), unlockShiftData);
 router.put('/shifts/:shiftId/readings/:readingId', authenticate, authorize('SM'), updateReading);
-router.post('/stations/:stationId/deliveries', authenticate, createTankerDelivery);
+router.post('/stations/:stationId/deliveries', authenticate, authorize('SM', 'Admin'), createTankerDelivery);
 router.get('/stations/:stationId/deliveries', authenticate, getStationDeliveries);
-router.post('/tanks/:tankId/deliveries', authenticate, createTankerDelivery);
+router.post('/tanks/:tankId/deliveries', authenticate, authorize('SM', 'Admin'), createTankerDelivery);
 router.get('/deliveries', authenticate, getDeliveries);
 router.delete('/shifts/:shiftId', authenticate, authorize('SM', 'Admin'), deleteShiftData);
 
@@ -60,7 +60,7 @@ router.patch('/nozzles/:nozzleId/opening-reading', authenticate, authorize('Admi
 router.patch('/nozzles/:nozzleId', authenticate, authorize('Admin'), updateNozzleData);
 router.post('/stations/:stationId/nozzles', authenticate, authorize('Admin'), addNozzleData);
 router.delete('/nozzles/:nozzleId', authenticate, authorize('Admin'), deleteNozzleData);
-router.get('/admin/stats', authenticate, authorize('Admin', 'OU'), getAdminStats);
+router.get('/admin/stats', authenticate, authorize('Admin', 'OU', 'Accountant', 'ViewOnly', 'Procurement'), getAdminStats);
 router.get('/stations/:stationId/stats', authenticate, getStationStatsData);
 
 // Tanker Delivery Editing

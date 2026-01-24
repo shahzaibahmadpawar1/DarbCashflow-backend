@@ -8,7 +8,7 @@ import {
     rejectPR,
     verifyPRPayment,
 } from '../controllers/purchaseRequest.controller';
-import { authenticate, requireSM, requireOU } from '../middleware/auth.middleware';
+import { authenticate, requireSM, requireOU, authorize } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -25,10 +25,10 @@ router.get('/office-user', authenticate, requireOU, getOfficeUserPRs);
 router.get('/:id', authenticate, getPRDetails);
 
 // Approve purchase request (Office User)
-router.put('/:id/approve', authenticate, requireOU, approvePR);
+router.put('/:id/approve', authenticate, authorize('Admin', 'OU'), approvePR);
 
 // Reject purchase request (Office User)
-router.put('/:id/reject', authenticate, requireOU, rejectPR);
+router.put('/:id/reject', authenticate, authorize('Admin', 'OU'), rejectPR);
 
 // Verify payment for purchase request (Accountant)
 router.put('/:id/verify-payment', authenticate, verifyPRPayment);

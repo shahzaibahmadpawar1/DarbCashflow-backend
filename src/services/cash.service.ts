@@ -259,12 +259,35 @@ export const depositCash = async (transactionId: string, receiptUrl: string) => 
 
 export const getFloatingCash = async (
   stationType?: string,
-  dateFilter?: { type: 'single' | 'range', date?: string, startDate?: string, endDate?: string }
+  dateFilter?: { type: 'single' | 'range', date?: string, startDate?: string, endDate?: string },
+  user?: { userId?: string, userRole?: string }
 ) => {
   // Build where clauses
   const whereClauses: any[] = [
     inArray(cashTransactions.status, ['PENDING_ACCEPTANCE', 'WITH_AM'])
   ];
+
+  // Add station filtering based on user role
+  if (user?.userId && (user.userRole === 'OU' || user.userRole === 'ViewOnly' || user.userRole === 'Accountant' || user.userRole === 'Procurement')) {
+    const { getAccessibleStationIds } = await import('./officeUser.service');
+    const accessibleStationIds = await getAccessibleStationIds(user.userId);
+
+    if (accessibleStationIds !== 'all') {
+      if (Array.isArray(accessibleStationIds) && accessibleStationIds.length > 0) {
+        whereClauses.push(inArray(cashTransactions.stationId, accessibleStationIds));
+      } else {
+        // No stations assigned - return empty result
+        return {
+          totalFloating: 0,
+          transactions: [],
+          breakdown: {
+            pendingAcceptance: 0,
+            withAM: 0,
+          },
+        };
+      }
+    }
+  }
 
   // Add date filtering
   if (dateFilter) {
@@ -357,9 +380,32 @@ export const getFloatingCash = async (
   };
 };
 
-export const getAdminCashSummary = async () => {
+export const getAdminCashSummary = async (user?: { userId?: string, userRole?: string }) => {
+  // Build where clause
+  let whereClause = undefined;
+
+  if (user?.userId && (user.userRole === 'OU' || user.userRole === 'ViewOnly' || user.userRole === 'Accountant' || user.userRole === 'Procurement')) {
+    const { getAccessibleStationIds } = await import('./officeUser.service');
+    const accessibleStationIds = await getAccessibleStationIds(user.userId);
+
+    if (accessibleStationIds !== 'all') {
+      if (Array.isArray(accessibleStationIds) && accessibleStationIds.length > 0) {
+        whereClause = inArray(cashTransactions.stationId, accessibleStationIds);
+      } else {
+        // No stations assigned - return zeroed totals
+        return {
+          totalCash: 0,
+          cashWithStationManagers: 0,
+          cashWithAreaManager: 0,
+          cashDepositedInBank: 0,
+        };
+      }
+    }
+  }
+
   // Get all cash transactions
   const allTransactions = await db.query.cashTransactions.findMany({
+    where: whereClause,
     with: {
       station: true,
     },

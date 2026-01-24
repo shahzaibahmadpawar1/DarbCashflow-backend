@@ -29,8 +29,8 @@ router.post(
   upload.single('receipt'),
   depositCashTransfer
 );
-router.get('/floating-cash', authenticate, authorize('Admin'), getFloatingCashView);
-router.get('/admin-summary', authenticate, authorize('Admin'), getAdminCashSummaryView);
+router.get('/floating-cash', authenticate, authorize('Admin', 'OU', 'Accountant', 'ViewOnly', 'Procurement'), getFloatingCashView);
+router.get('/admin-summary', authenticate, authorize('Admin', 'OU', 'Accountant', 'ViewOnly', 'Procurement'), getAdminCashSummaryView);
 
 // Bank Deposits
 router.post('/deposits', authenticate, authorize('AM'), createBankDepositData);

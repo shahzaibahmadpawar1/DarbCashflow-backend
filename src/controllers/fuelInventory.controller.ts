@@ -20,7 +20,7 @@ export const getTankInventorySummary = async (req: AuthRequest, res: Response): 
             };
         }
 
-        const summary = await getFuelTankInventorySummary(dateFilter);
+        const summary = await getFuelTankInventorySummary(dateFilter, req.user);
 
         res.json(summary);
     } catch (error: any) {
@@ -54,7 +54,7 @@ export const getFuelTypeDetailedView = async (req: AuthRequest, res: Response): 
             };
         }
 
-        const details = await getFuelTypeDetails(fuelType as any, dateFilter);
+        const details = await getFuelTypeDetails(fuelType as any, dateFilter, req.user);
 
         res.json(details);
     } catch (error: any) {
