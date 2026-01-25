@@ -1,5 +1,5 @@
 import db from '../config/database';
-import { tankerDeliveries, tanks, stations } from '../db/schema';
+import { tankerDeliveries, tanks, stations, purchaseOrders } from '../db/schema';
 import { eq, and, gte, lte, sql, inArray, desc } from 'drizzle-orm';
 import { getAccessibleStationIds } from './officeUser.service';
 
@@ -57,13 +57,14 @@ export const getFuelTankInventorySummary = async (
         return date;
     }
 
-    // Get all deliveries with join to tanks and stations
+    // Get all deliveries with join to tanks, stations, and purchase orders
     const query = db.select({
         id: tankerDeliveries.id,
         tankId: tankerDeliveries.tankId,
         litersDelivered: tankerDeliveries.litersDelivered,
         deliveryDate: tankerDeliveries.deliveryDate,
-        aramcoTicket: tankerDeliveries.aramcoTicket,
+        aramcoTicket: sql<string>`COALESCE(${purchaseOrders.invoiceNumber}, ${tankerDeliveries.aramcoTicket})`.as('aramco_ticket'), // Prefer PO invoice number
+        invoiceNumber: purchaseOrders.invoiceNumber,
         receiptUrl: tankerDeliveries.receiptUrl,
         notes: tankerDeliveries.notes,
         stationId: tanks.stationId,
@@ -73,6 +74,7 @@ export const getFuelTankInventorySummary = async (
         .from(tankerDeliveries)
         .innerJoin(tanks, eq(tankerDeliveries.tankId, tanks.id))
         .innerJoin(stations, eq(tanks.stationId, stations.id))
+        .leftJoin(purchaseOrders, eq(tankerDeliveries.purchaseOrderId, purchaseOrders.id))
         .orderBy(desc(tankerDeliveries.deliveryDate));
 
     if (conditions.length > 0) {
@@ -171,7 +173,8 @@ export const getFuelTypeDetails = async (
         id: tankerDeliveries.id,
         litersDelivered: tankerDeliveries.litersDelivered,
         deliveryDate: tankerDeliveries.deliveryDate,
-        aramcoTicket: tankerDeliveries.aramcoTicket,
+        aramcoTicket: sql<string>`COALESCE(${purchaseOrders.invoiceNumber}, ${tankerDeliveries.aramcoTicket})`.as('aramco_ticket'), // Prefer PO invoice number
+        invoiceNumber: purchaseOrders.invoiceNumber,
         receiptUrl: tankerDeliveries.receiptUrl,
         notes: tankerDeliveries.notes,
         stationId: tanks.stationId,
@@ -181,6 +184,7 @@ export const getFuelTypeDetails = async (
         .from(tankerDeliveries)
         .innerJoin(tanks, eq(tankerDeliveries.tankId, tanks.id))
         .innerJoin(stations, eq(tanks.stationId, stations.id))
+        .leftJoin(purchaseOrders, eq(tankerDeliveries.purchaseOrderId, purchaseOrders.id))
         .where(and(...conditions))
         .orderBy(desc(tankerDeliveries.deliveryDate));
 
