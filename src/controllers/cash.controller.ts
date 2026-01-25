@@ -201,8 +201,8 @@ export const createBankDepositData = async (req: AuthRequest, res: Response): Pr
       return;
     }
 
-    if (!amount || !depositDate) {
-      res.status(400).json({ error: 'Amount and Date are required' });
+    if (!amount || !depositDate || !receiptUrl) {
+      res.status(400).json({ error: 'Amount, Date, and Receipt are required' });
       return;
     }
 

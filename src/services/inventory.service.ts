@@ -1,5 +1,5 @@
 import db from '../config/database';
-import { stations, nozzles, tanks, shifts, nozzleReadings, tankerDeliveries, dailyShiftReadings, paymentSummary, fuelPrices } from '../db/schema';
+import { stations, nozzles, tanks, shifts, nozzleReadings, tankerDeliveries, dailyShiftReadings, paymentSummary, fuelPrices, purchaseOrders } from '../db/schema';
 import { eq, and, desc, inArray, gte, lt, ne, sql } from 'drizzle-orm';
 
 export const getNozzlesByStation = async (stationId: string) => {
@@ -388,6 +388,7 @@ export const recordTankerDelivery = async (data: {
       tankId: targetTankId, // Use the resolved tank ID
       litersDelivered: data.litersDelivered,
       deliveryDate: data.deliveryDate,
+      openingBalance: currentLevel, // Store opening balance
       deliveredBy: data.deliveredBy,
       aramcoTicket: data.aramcoTicket,
       notes: data.notes,
@@ -490,20 +491,30 @@ export const getDeliveriesByStation = async (stationId: string) => {
 
   if (tankIds.length === 0) return [];
 
-  return db.query.tankerDeliveries.findMany({
-    where: inArray(tankerDeliveries.tankId, tankIds),
-    with: {
-      tank: {
-        with: {
-          station: true, // Include station information
-        },
-      },
-      deliveredBy: {
-        columns: { id: true, name: true, employeeId: true },
-      },
-    },
-    orderBy: [desc(tankerDeliveries.deliveryDate)],
-  });
+  // Use manual select to join with purchase orders and get fuel type
+  const deliveries = await db.select({
+    id: tankerDeliveries.id,
+    tankId: tankerDeliveries.tankId,
+    litersDelivered: tankerDeliveries.litersDelivered,
+    deliveryDate: tankerDeliveries.deliveryDate,
+    openingBalance: tankerDeliveries.openingBalance,
+    consumption: tankerDeliveries.consumption,
+    aramcoTicket: sql<string>`COALESCE(${purchaseOrders.invoiceNumber}, ${tankerDeliveries.aramcoTicket})`,
+    invoiceNumber: purchaseOrders.invoiceNumber,
+    receiptUrl: tankerDeliveries.receiptUrl,
+    notes: tankerDeliveries.notes,
+    isUnlocked: tankerDeliveries.isUnlocked,
+    createdAt: tankerDeliveries.createdAt,
+    fuelType: tanks.fuelType,
+    deliveredBy: tankerDeliveries.deliveredBy,
+  })
+    .from(tankerDeliveries)
+    .innerJoin(tanks, eq(tankerDeliveries.tankId, tanks.id))
+    .leftJoin(purchaseOrders, eq(tankerDeliveries.purchaseOrderId, purchaseOrders.id))
+    .where(inArray(tankerDeliveries.tankId, tankIds))
+    .orderBy(desc(tankerDeliveries.deliveryDate));
+
+  return deliveries;
 };
 
 // ==================== DAILY SHIFT SYSTEM ====================

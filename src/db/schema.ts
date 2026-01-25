@@ -126,6 +126,8 @@ export const tankerDeliveries = pgTable('tanker_deliveries', {
     tankId: uuid('tank_id').notNull().references(() => tanks.id, { onDelete: 'cascade' }),
     litersDelivered: doublePrecision('liters_delivered').notNull(),
     deliveryDate: timestamp('delivery_date').notNull(),
+    openingBalance: doublePrecision('opening_balance').default(0), // Level before delivery
+    consumption: doublePrecision('consumption').default(0), // Sales since last delivery
     deliveredBy: uuid('delivered_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
     aramcoTicket: text('aramco_ticket'), // DEPRECATED - kept for old records
     invoiceNumber: text('invoice_number'), // NEW - from purchase order
