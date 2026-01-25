@@ -380,15 +380,61 @@ export const recordTankerDelivery = async (data: {
     throw new Error('Tank not found');
   }
 
+  // 1. Find the latest delivery for this tank to determine period start
+  const lastDelivery = await db.query.tankerDeliveries.findFirst({
+    where: eq(tankerDeliveries.tankId, targetTankId),
+    orderBy: [desc(tankerDeliveries.deliveryDate)],
+  });
+
+  // 2. Calculate consumption (sales) since the last delivery
+  let consumption = 0;
+  if (lastDelivery) {
+    const consumptionResult = await db
+      .select({
+        totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
+      })
+      .from(dailyShiftReadings)
+      .innerJoin(shifts, eq(dailyShiftReadings.shiftId, shifts.id))
+      .innerJoin(nozzles, eq(dailyShiftReadings.nozzleId, nozzles.id))
+      .where(
+        and(
+          eq(nozzles.tankId, targetTankId),
+          gte(shifts.shiftDate, lastDelivery.deliveryDate),
+          lt(shifts.shiftDate, data.deliveryDate)
+        )
+      );
+
+    consumption = Number(consumptionResult[0]?.totalLiters || 0);
+  }
+
+  // 3. Determine opening balance
+  // If we have a previous delivery, the opening balance is the total liters after that delivery (including its consumption)
+  // Formula: Opening_N = Total_N-1 = (Opening_N-1 + Delivered_N-1) - Consumption_since_N-2_to_N-1
+  // Actually, opening balance "at the time of delivery" could just be the current level.
+  // But to satisfy the user's formula (Total = Opening + Delivery - Consumption), 
+  // the Opening must be the balance from the START of the window.
+
   const currentLevel = tank.currentLevel || 0;
+  let openingBalance = currentLevel;
+
+  if (lastDelivery) {
+    // If we have a previous delivery, opening balance is the total from that delivery
+    openingBalance = (lastDelivery.openingBalance || 0) + (lastDelivery.litersDelivered || 0) - (lastDelivery.consumption || 0);
+  } else {
+    // For the first delivery in the system, we treat the current level as the opening balance
+    // and assume consumption uptil now is 0 or already accounted for.
+    openingBalance = currentLevel;
+  }
+
   const newLevel = currentLevel + data.litersDelivered;
 
   return db.transaction(async (tx) => {
     const [delivery] = await tx.insert(tankerDeliveries).values({
-      tankId: targetTankId, // Use the resolved tank ID
+      tankId: targetTankId,
       litersDelivered: data.litersDelivered,
       deliveryDate: data.deliveryDate,
-      openingBalance: currentLevel, // Store opening balance
+      openingBalance: openingBalance,
+      consumption: consumption,
       deliveredBy: data.deliveredBy,
       aramcoTicket: data.aramcoTicket,
       notes: data.notes,
