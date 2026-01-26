@@ -2,16 +2,30 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import db from '../config/database';
 import { creditTransactions, stations, users } from '../db/schema';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, sql } from 'drizzle-orm';
 
 // Get credit transactions for a station
 export const getCreditTransactions = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const { stationId } = req.params;
-        const { limit = '50', offset = '0' } = req.query;
+        const { limit = '1000', offset = '0', startDate, endDate } = req.query;
+
+        let whereClause: any = eq(creditTransactions.stationId, stationId);
+
+        if (startDate || endDate) {
+            const conditions = [eq(creditTransactions.stationId, stationId)];
+            if (startDate) {
+                conditions.push(sql`${creditTransactions.createdAt} >= ${startDate}`);
+            }
+            if (endDate) {
+                // Add 23:59:59 to endDate to include the whole day
+                conditions.push(sql`${creditTransactions.createdAt} <= ${endDate} || ' 23:59:59'`);
+            }
+            whereClause = and(...conditions);
+        }
 
         const transactions = await db.query.creditTransactions.findMany({
-            where: eq(creditTransactions.stationId, stationId),
+            where: whereClause,
             orderBy: desc(creditTransactions.createdAt),
             limit: parseInt(limit as string),
             offset: parseInt(offset as string),
