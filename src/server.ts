@@ -29,7 +29,7 @@ app.use(
     origin: [
       "https://azharalibuttar.com",      // Production (cPanel)
       "https://www.azharalibuttar.com",  // Production (www)
-      "https://fms.darbstations.com.sa",
+      "https://stg.fms.darbstations.com.sa",
       "http://localhost:3000",           // Local Development (Vite default port)
       "http://localhost:5173"            // Alternate Local Port (just in case)
     ],
