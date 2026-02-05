@@ -89,6 +89,13 @@ export const getPurchaseOrdersByStation = async (stationId: string) => {
                             employeeId: true,
                         }
                     },
+                    paymentVerifier: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
                 }
             },
             creator: {

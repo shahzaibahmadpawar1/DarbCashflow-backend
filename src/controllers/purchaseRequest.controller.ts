@@ -42,7 +42,16 @@ export const getStationPRs = async (req: Request, res: Response) => {
 
         const prs = await getPurchaseRequestsByStation(stationId);
 
-        res.json({ purchaseRequests: prs });
+        // Transform relation names
+        const transformedPRs = prs.map(pr => ({
+            ...pr,
+            paymentVerifiedBy: (pr as any).paymentVerifier,
+            approvedBy: (pr as any).approver,
+            rejectedBy: (pr as any).rejecter,
+            reviewedBy: (pr as any).reviewer,
+        }));
+
+        res.json({ purchaseRequests: transformedPRs });
     } catch (error: any) {
         console.error('Error fetching purchase requests:', error);
         res.status(500).json({ error: error.message || 'Failed to fetch purchase requests' });
@@ -55,7 +64,16 @@ export const getOfficeUserPRs = async (req: Request, res: Response) => {
 
         const prs = await getPurchaseRequestsForOfficeUser(userId);
 
-        res.json({ purchaseRequests: prs });
+        // Transform relation names
+        const transformedPRs = prs.map(pr => ({
+            ...pr,
+            paymentVerifiedBy: (pr as any).paymentVerifier,
+            approvedBy: (pr as any).approver,
+            rejectedBy: (pr as any).rejecter,
+            reviewedBy: (pr as any).reviewer,
+        }));
+
+        res.json({ purchaseRequests: transformedPRs });
     } catch (error: any) {
         console.error('Error fetching purchase requests:', error);
         res.status(500).json({ error: error.message || 'Failed to fetch purchase requests' });
@@ -68,7 +86,15 @@ export const getPRDetails = async (req: Request, res: Response) => {
 
         const pr = await getPurchaseRequestDetails(id);
 
-        res.json({ purchaseRequest: pr });
+        const transformedPR = {
+            ...pr,
+            paymentVerifiedBy: (pr as any).paymentVerifier,
+            approvedBy: (pr as any).approver,
+            rejectedBy: (pr as any).rejecter,
+            reviewedBy: (pr as any).reviewer,
+        };
+
+        res.json({ purchaseRequest: transformedPR });
     } catch (error: any) {
         console.error('Error fetching purchase request details:', error);
         res.status(500).json({ error: error.message || 'Failed to fetch purchase request details' });

@@ -1,6 +1,6 @@
 import db from '../config/database';
-import { stations, nozzles, tanks, shifts, nozzleReadings, tankerDeliveries, dailyShiftReadings, paymentSummary, fuelPrices, purchaseOrders } from '../db/schema';
-import { eq, and, desc, inArray, gte, lt, ne, sql } from 'drizzle-orm';
+import { stations, nozzles, tanks, shifts, nozzleReadings, tankerDeliveries, dailyShiftReadings, paymentSummary, fuelPrices, purchaseOrders, nozzleSales } from '../db/schema';
+import { eq, and, desc, inArray, gte, lt, ne, sql, lte } from 'drizzle-orm';
 
 export const getNozzlesByStation = async (stationId: string) => {
   return db.query.nozzles.findMany({
@@ -399,31 +399,47 @@ export const recordTankerDelivery = async (data: {
       .where(
         and(
           eq(nozzles.tankId, targetTankId),
-          gte(shifts.shiftDate, lastDelivery.deliveryDate),
-          lt(shifts.shiftDate, data.deliveryDate)
+          gte(sql`DATE(${shifts.shiftDate})`, sql`DATE(${lastDelivery.deliveryDate})`),
+          lte(sql`DATE(${shifts.shiftDate})`, sql`DATE(${data.deliveryDate})`)
         )
       );
 
     consumption = Number(consumptionResult[0]?.totalLiters || 0);
-  }
 
-  // 3. Determine opening balance
-  const currentLevel = tank.currentLevel || 0;
-  let openingBalance = currentLevel;
+    // Also get any legacy consumption if applicable
+    const legacyConsumption = await db
+      .select({
+        totalLiters: sql<number>`sum(${nozzleSales.quantityLiters})`,
+      })
+      .from(nozzleSales)
+      .innerJoin(shifts, eq(nozzleSales.shiftId, shifts.id))
+      .innerJoin(nozzles, eq(nozzleSales.nozzleId, nozzles.id))
+      .where(
+        and(
+          eq(nozzles.tankId, targetTankId),
+          gte(sql`DATE(${shifts.startTime})`, sql`DATE(${lastDelivery.deliveryDate})`),
+          lte(sql`DATE(${shifts.startTime})`, sql`DATE(${data.deliveryDate})`)
+        )
+      );
 
-  const deliveryTimestamp = data.deliveryDate ? new Date(data.deliveryDate).getTime() : new Date().getTime();
-
-  // If recording within 2 hours of 'now', use real tank level
-  const isRealTime = Math.abs(new Date().getTime() - deliveryTimestamp) < 2 * 60 * 60 * 1000;
-
-  if (!isRealTime && lastDelivery) {
-    const lastTotal = (lastDelivery.openingBalance || 0) + (lastDelivery.litersDelivered || 0) - (lastDelivery.consumption || 0);
-    openingBalance = lastTotal > 0 ? lastTotal : currentLevel;
+    consumption += Number(legacyConsumption[0]?.totalLiters || 0);
   } else {
-    openingBalance = currentLevel;
+    // If no previous delivery, show total consumption since the beginning of records for this tank
+    const totalConsumptionResult = await db
+      .select({
+        totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
+      })
+      .from(dailyShiftReadings)
+      .innerJoin(nozzles, eq(dailyShiftReadings.nozzleId, nozzles.id))
+      .where(eq(nozzles.tankId, targetTankId));
+
+    consumption = Number(totalConsumptionResult[0]?.totalLiters || 0);
   }
 
-  const newLevel = currentLevel + data.litersDelivered;
+  // 3. Determine opening balance (Level after adding delivery fuel as per user request)
+  const currentLevel = tank.currentLevel || 0;
+  const openingBalance = currentLevel + data.litersDelivered;
+  const newLevel = openingBalance; // Updated level IS the opening balance calculated above
 
   return db.transaction(async (tx) => {
     const [delivery] = await tx.insert(tankerDeliveries).values({
@@ -540,7 +556,7 @@ export const getDeliveriesByStation = async (stationId: string) => {
     tankId: tankerDeliveries.tankId,
     litersDelivered: tankerDeliveries.litersDelivered,
     deliveryDate: tankerDeliveries.deliveryDate,
-    openingBalance: tankerDeliveries.openingBalance,
+    openingBalance: sql<number>`COALESCE(NULLIF(${tankerDeliveries.openingBalance}, 0), ${tankerDeliveries.litersDelivered})`,
     consumption: tankerDeliveries.consumption,
     aramcoTicket: sql<string>`COALESCE(${purchaseOrders.invoiceNumber}, ${tankerDeliveries.aramcoTicket})`,
     invoiceNumber: purchaseOrders.invoiceNumber,

@@ -21,6 +21,34 @@ export const getPendingProcurementPOs = async (stationIds: string[]) => {
             purchaseRequest: {
                 with: {
                     station: true,
+                    creator: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    paymentVerifier: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    approver: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    reviewer: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
                 },
             },
             transporter: true,
@@ -47,6 +75,34 @@ export const getProcurementPOs = async (stationIds: string[]) => {
             purchaseRequest: {
                 with: {
                     station: true,
+                    creator: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    paymentVerifier: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    approver: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    reviewer: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
                 },
             },
             transporter: true,
@@ -77,6 +133,34 @@ export const getConfirmedPOs = async (stationIds: string[]) => {
             purchaseRequest: {
                 with: {
                     station: true,
+                    creator: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    paymentVerifier: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    approver: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
+                    reviewer: {
+                        columns: {
+                            id: true,
+                            name: true,
+                            employeeId: true,
+                        }
+                    },
                 },
             },
             transporter: true,

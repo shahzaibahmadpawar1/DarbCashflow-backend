@@ -26,7 +26,19 @@ export const getPendingPOs = async (req: Request, res: Response) => {
 
         const pos = await getPendingProcurementPOs(finalStationIds);
 
-        res.json({ purchaseOrders: pos });
+        // Transform relation names to match frontend expectations
+        const transformedPOs = pos.map(po => ({
+            ...po,
+            purchaseRequest: {
+                ...po.purchaseRequest,
+                paymentVerifiedBy: (po.purchaseRequest as any).paymentVerifier,
+                approvedBy: (po.purchaseRequest as any).approver,
+                rejectedBy: (po.purchaseRequest as any).rejecter,
+                reviewedBy: (po.purchaseRequest as any).reviewer,
+            }
+        }));
+
+        res.json({ purchaseOrders: transformedPOs });
     } catch (error) {
         console.error('Error fetching pending POs:', error);
         res.status(500).json({ error: 'Failed to fetch pending purchase orders' });
@@ -55,7 +67,19 @@ export const getAllProcurementPOs = async (req: Request, res: Response) => {
 
         const pos = await getProcurementPOs(finalStationIds);
 
-        res.json({ purchaseOrders: pos });
+        // Transform relation names to match frontend expectations
+        const transformedPOs = pos.map(po => ({
+            ...po,
+            purchaseRequest: {
+                ...po.purchaseRequest,
+                paymentVerifiedBy: (po.purchaseRequest as any).paymentVerifier,
+                approvedBy: (po.purchaseRequest as any).approver,
+                rejectedBy: (po.purchaseRequest as any).rejecter,
+                reviewedBy: (po.purchaseRequest as any).reviewer,
+            }
+        }));
+
+        res.json({ purchaseOrders: transformedPOs });
     } catch (error) {
         console.error('Error fetching POs:', error);
         res.status(500).json({ error: 'Failed to fetch purchase orders' });

@@ -152,6 +152,13 @@ export const getPurchaseRequestsByStation = async (stationId: string) => {
                     employeeId: true,
                 }
             },
+            paymentVerifier: {
+                columns: {
+                    id: true,
+                    name: true,
+                    employeeId: true,
+                }
+            },
             transporter: true,
             purchaseOrder: {
                 with: {
@@ -207,6 +214,13 @@ export const getPurchaseRequestsForOfficeUser = async (userId: string) => {
                         employeeId: true,
                     }
                 },
+                paymentVerifier: {
+                    columns: {
+                        id: true,
+                        name: true,
+                        employeeId: true,
+                    }
+                },
                 transporter: true,
                 purchaseOrder: {
                     with: {
@@ -255,6 +269,13 @@ export const getPurchaseRequestsForOfficeUser = async (userId: string) => {
                 }
             },
             reviewer: {
+                columns: {
+                    id: true,
+                    name: true,
+                    employeeId: true,
+                }
+            },
+            paymentVerifier: {
                 columns: {
                     id: true,
                     name: true,
