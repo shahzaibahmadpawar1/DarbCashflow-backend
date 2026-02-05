@@ -99,13 +99,15 @@ export const createStation = async (req: AuthRequest, res: Response): Promise<vo
       // Create tanks for each fuel type
       const fuelTypes = ['91_GASOLINE', '95_GASOLINE', '98_GASOLINE', 'DIESEL'];
       const tankMap = new Map<string, string>();
+      const tankLevels = req.body.tankLevels || {};
 
       for (const fuelType of fuelTypes) {
+        const initialLevel = tankLevels[fuelType] !== undefined ? parseFloat(tankLevels[fuelType]) : 0;
         const [tank] = await db.insert(tanks).values({
           stationId: station.id,
           fuelType: fuelType as any,
           capacity: 100000,
-          currentLevel: 0,
+          currentLevel: initialLevel,
         }).returning();
         tankMap.set(fuelType, tank.id);
       }

@@ -1243,3 +1243,15 @@ export const deleteNozzle = async (nozzleId: string) => {
   return deletedNozzle;
 };
 
+
+export const updateTankLevel = async (tankId: string, newLevel: number) => {
+  const [updatedTank] = await db.update(tanks)
+    .set({
+      currentLevel: newLevel,
+      updatedAt: new Date(),
+    })
+    .where(eq(tanks.id, tankId))
+    .returning();
+
+  return updatedTank;
+};

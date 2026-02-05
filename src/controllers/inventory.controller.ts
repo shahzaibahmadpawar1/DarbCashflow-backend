@@ -28,6 +28,7 @@ import {
   getStationStats,
   updateTankerDelivery,
   toggleTankerLock,
+  updateTankLevel,
 } from '../services/inventory.service';
 import db from '../config/database';
 import { shifts } from '../db/schema';
@@ -546,3 +547,20 @@ export const deleteNozzleData = async (req: AuthRequest, res: Response): Promise
   }
 };
 
+
+export const updateTankLevelData = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { tankId } = req.params;
+    const { currentLevel } = req.body;
+
+    if (currentLevel === undefined) {
+      res.status(400).json({ error: 'Current level is required' });
+      return;
+    }
+
+    const tank = await updateTankLevel(tankId, parseFloat(currentLevel));
+    res.json({ message: 'Tank level updated successfully', tank });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};

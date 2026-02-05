@@ -28,6 +28,7 @@ import {
   getAdminStats,
   updateTankerDeliveryData,
   toggleTankerLockData,
+  updateTankLevelData,
 } from '../controllers/inventory.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
@@ -59,6 +60,7 @@ router.post('/shifts/:shiftId/daily/lock', authenticate, authorize('SM'), lockDa
 router.patch('/nozzles/:nozzleId/opening-reading', authenticate, authorize('Admin'), updateNozzleOpeningReadingData);
 router.patch('/nozzles/:nozzleId', authenticate, authorize('Admin'), updateNozzleData);
 router.post('/stations/:stationId/nozzles', authenticate, authorize('Admin'), addNozzleData);
+router.patch('/tanks/:tankId/level', authenticate, authorize('Admin'), updateTankLevelData);
 router.delete('/nozzles/:nozzleId', authenticate, authorize('Admin'), deleteNozzleData);
 router.get('/admin/stats', authenticate, authorize('Admin', 'OU', 'Accountant', 'ViewOnly', 'Procurement'), getAdminStats);
 router.get('/stations/:stationId/stats', authenticate, getStationStatsData);
