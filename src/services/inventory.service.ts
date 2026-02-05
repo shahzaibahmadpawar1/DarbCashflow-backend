@@ -386,60 +386,52 @@ export const recordTankerDelivery = async (data: {
     orderBy: [desc(tankerDeliveries.deliveryDate), desc(tankerDeliveries.createdAt)],
   });
 
-  // 2. Calculate consumption (sales) since the last delivery
+  // 2. Calculate consumption (Sales for the delivery period or total sales if first delivery)
   let consumption = 0;
-  if (lastDelivery) {
-    const consumptionResult = await db
-      .select({
-        totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
-      })
+
+  // Calculate total consumption for this tank from all systems
+  const getConsumptionForRange = async (start?: Date, end?: Date) => {
+    let whereClause = eq(nozzles.tankId, targetTankId);
+    if (start && end) {
+      whereClause = and(
+        whereClause,
+        sql`(DATE(${shifts.shiftDate}) >= DATE(${start}) OR DATE(${shifts.startTime}) >= DATE(${start}))`,
+        sql`(DATE(${shifts.shiftDate}) <= DATE(${end}) OR DATE(${shifts.startTime}) <= DATE(${end}))`
+      ) as any;
+    } else if (end) {
+      whereClause = and(
+        whereClause,
+        sql`(DATE(${shifts.shiftDate}) <= DATE(${end}) OR DATE(${shifts.startTime}) <= DATE(${end}))`
+      ) as any;
+    }
+
+    const dailyResult = await db
+      .select({ total: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})` })
       .from(dailyShiftReadings)
       .innerJoin(shifts, eq(dailyShiftReadings.shiftId, shifts.id))
       .innerJoin(nozzles, eq(dailyShiftReadings.nozzleId, nozzles.id))
-      .where(
-        and(
-          eq(nozzles.tankId, targetTankId),
-          gte(sql`DATE(${shifts.shiftDate})`, sql`DATE(${lastDelivery.deliveryDate})`),
-          lte(sql`DATE(${shifts.shiftDate})`, sql`DATE(${data.deliveryDate})`)
-        )
-      );
+      .where(whereClause);
 
-    consumption = Number(consumptionResult[0]?.totalLiters || 0);
-
-    // Also get any legacy consumption if applicable
-    const legacyConsumption = await db
-      .select({
-        totalLiters: sql<number>`sum(${nozzleSales.quantityLiters})`,
-      })
+    const legacyResult = await db
+      .select({ total: sql<number>`sum(${nozzleSales.quantityLiters})` })
       .from(nozzleSales)
       .innerJoin(shifts, eq(nozzleSales.shiftId, shifts.id))
       .innerJoin(nozzles, eq(nozzleSales.nozzleId, nozzles.id))
-      .where(
-        and(
-          eq(nozzles.tankId, targetTankId),
-          gte(sql`DATE(${shifts.startTime})`, sql`DATE(${lastDelivery.deliveryDate})`),
-          lte(sql`DATE(${shifts.startTime})`, sql`DATE(${data.deliveryDate})`)
-        )
-      );
+      .where(whereClause);
 
-    consumption += Number(legacyConsumption[0]?.totalLiters || 0);
+    return Number(dailyResult[0]?.total || 0) + Number(legacyResult[0]?.total || 0);
+  };
+
+  if (lastDelivery) {
+    consumption = await getConsumptionForRange(lastDelivery.deliveryDate, data.deliveryDate);
   } else {
-    // If no previous delivery, show total consumption since the beginning of records for this tank
-    const totalConsumptionResult = await db
-      .select({
-        totalLiters: sql<number>`sum(${dailyShiftReadings.shiftALiters} + ${dailyShiftReadings.shiftBLiters})`,
-      })
-      .from(dailyShiftReadings)
-      .innerJoin(nozzles, eq(dailyShiftReadings.nozzleId, nozzles.id))
-      .where(eq(nozzles.tankId, targetTankId));
-
-    consumption = Number(totalConsumptionResult[0]?.totalLiters || 0);
+    consumption = await getConsumptionForRange(undefined, data.deliveryDate);
   }
 
-  // 3. Determine opening balance (Level after adding delivery fuel as per user request)
+  // 3. Determine opening balance (Level after adding delivery fuel)
   const currentLevel = tank.currentLevel || 0;
   const openingBalance = currentLevel + data.litersDelivered;
-  const newLevel = openingBalance; // Updated level IS the opening balance calculated above
+  const newLevel = openingBalance;
 
   return db.transaction(async (tx) => {
     const [delivery] = await tx.insert(tankerDeliveries).values({
@@ -556,8 +548,23 @@ export const getDeliveriesByStation = async (stationId: string) => {
     tankId: tankerDeliveries.tankId,
     litersDelivered: tankerDeliveries.litersDelivered,
     deliveryDate: tankerDeliveries.deliveryDate,
-    openingBalance: sql<number>`COALESCE(NULLIF(${tankerDeliveries.openingBalance}, 0), ${tankerDeliveries.litersDelivered})`,
-    consumption: tankerDeliveries.consumption,
+    // Use stored openingBalance if available, otherwise show the current level for the latest row
+    openingBalance: sql<number>`COALESCE(NULLIF(${tankerDeliveries.openingBalance}, 0), 
+        CASE WHEN ${tankerDeliveries.id} = (
+            SELECT id FROM ${tankerDeliveries} td2 
+            WHERE td2.tank_id = ${tankerDeliveries.tankId} 
+            ORDER BY td2.delivery_date DESC, td2.created_at DESC LIMIT 1
+        ) THEN ${tanks.currentLevel} ELSE ${tankerDeliveries.litersDelivered} END)`,
+    // For consumption, fetch the daily sales if stored is 0
+    consumption: sql<number>`COALESCE(NULLIF(${tankerDeliveries.consumption}, 0), (
+        SELECT COALESCE(SUM(dsr.shift_a_liters + dsr.shift_b_liters), 0) + COALESCE(SUM(ns.quantity_liters), 0)
+        FROM ${nozzles} n
+        LEFT JOIN ${dailyShiftReadings} dsr ON dsr.nozzle_id = n.id
+        LEFT JOIN ${nozzleSales} ns ON ns.nozzle_id = n.id
+        LEFT JOIN ${shifts} s ON (s.id = dsr.shift_id OR s.id = ns.shift_id)
+        WHERE n.tank_id = ${tankerDeliveries.tankId}
+        AND (DATE(s.shift_date) = DATE(${tankerDeliveries.deliveryDate}) OR DATE(s.start_time) = DATE(${tankerDeliveries.deliveryDate}))
+    ))`,
     aramcoTicket: sql<string>`COALESCE(${purchaseOrders.invoiceNumber}, ${tankerDeliveries.aramcoTicket})`,
     invoiceNumber: purchaseOrders.invoiceNumber,
     receiptUrl: tankerDeliveries.receiptUrl,
